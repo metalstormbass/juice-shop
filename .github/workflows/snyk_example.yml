@@ -14,6 +14,8 @@ jobs:
       - run: |
           sudo npm install -g snyk
           sudo npm install -g snyk-to-html
+          snyk auth ${SNYK_TOKEN}
+          npm install
 
       # Setup Snyk actions
       - name: Snyk
