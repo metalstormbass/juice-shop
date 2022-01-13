@@ -17,10 +17,6 @@ jobs:
           snyk auth ${SNYK_TOKEN}
           npm install
 
-      # Setup Snyk actions
-      - name: Snyk
-        uses: snyk/actions@0.3.0
-
       # Snyk Test
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/node@master
