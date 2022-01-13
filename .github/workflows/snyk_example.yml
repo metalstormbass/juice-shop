@@ -10,7 +10,7 @@ jobs:
       # Checkout
       - uses: actions/checkout@master
 
-      # Install and Auth
+      # Install and auth
       - run: |
           echo "Secret: ${SNYK_TOKEN}"
           sudo npm install -g snyk
