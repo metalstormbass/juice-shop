@@ -10,12 +10,12 @@ jobs:
       # Checkout
       - uses: actions/checkout@master
 
-      # Auth
-      - run: snyk auth ${SNYK_TOKEN}
-
       # Setup Snyk actions
       - name: Snyk
         uses: snyk/actions@0.3.0
+
+      # Auth
+      - run: snyk auth ${SNYK_TOKEN}
 
       # Snyk Test
       - name: Run Snyk to check for vulnerabilities
