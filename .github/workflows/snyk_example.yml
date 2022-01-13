@@ -12,7 +12,7 @@ jobs:
 
       # Install and Auth
       - run: |
-          echo "Secret: ${SNYK_TOKEN}" 
+          echo "Secret: ${SNYK_TOKEN}"
           sudo npm install -g snyk
           sudo npm install -g snyk-to-html
 
