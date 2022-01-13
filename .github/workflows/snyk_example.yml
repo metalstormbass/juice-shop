@@ -3,25 +3,26 @@ on: push
 jobs:
   security:
     runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
     steps:
       # Checkout
       - uses: actions/checkout@master
 
-      # Setup snyk actions
+      # Setup Snyk actions
       - name: Snyk
         uses: snyk/actions@0.3.0
+
+      # Auth
+      - run: snyk auth ${SNYK_TOKEN}
 
       # Snyk Test
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
       # Snyk Monitor
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           command: monitor
