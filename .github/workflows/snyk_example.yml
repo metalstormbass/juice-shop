@@ -13,6 +13,8 @@ jobs:
       # Setup Snyk actions
       - name: Snyk
         uses: snyk/actions@0.3.0
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
       # Auth
       - run: snyk auth ${SNYK_TOKEN}
