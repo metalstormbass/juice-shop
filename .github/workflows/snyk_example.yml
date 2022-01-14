@@ -10,13 +10,16 @@ jobs:
       # Checkout
       - uses: actions/checkout@master
 
-      # Install
+      # Install using Snyk Action:
       - uses: snyk/actions/setup@master
+
+      # Install directly:
       #- run: |
       #    sudo npm install -g snyk
       #    sudo npm install -g snyk-to-html
-      #    snyk auth ${SNYK_TOKEN}
-      #    npm install
+
+      # Install Project Dependencies:
+      - run: npm install
 
       # Snyk Test
       - name: Run Snyk Test
