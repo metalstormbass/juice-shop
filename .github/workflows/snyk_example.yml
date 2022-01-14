@@ -10,19 +10,22 @@ jobs:
       # Checkout
       - uses: actions/checkout@master
 
-      # Install and auth
-      - run: |
-          sudo npm install -g snyk
-          sudo npm install -g snyk-to-html
-          snyk auth ${SNYK_TOKEN}
-          npm install
+      # Install
+      - uses: snyk/actions/setup@master
+      #- run: |
+      #    sudo npm install -g snyk
+      #    sudo npm install -g snyk-to-html
+      #    snyk auth ${SNYK_TOKEN}
+      #    npm install
 
       # Snyk Test
-      - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/node@master
-
-      # Snyk Monitor
-      - name: Run Snyk to check for vulnerabilities
+      - name: Run Snyk Test
         uses: snyk/actions/node@master
         with:
-          command: monitor
+          args: --severity-threshold=critical
+
+      # Snyk Monitor
+      #- name: Run Snyk Monitor
+      #  uses: snyk/actions/node@master
+      #  with:
+      #    command: monitor
