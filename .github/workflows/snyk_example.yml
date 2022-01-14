@@ -24,7 +24,7 @@ jobs:
       #    sudo npm install -g snyk-to-html
 
       # Install Project Dependencies
-      - run: npm install --silent
+      - run: npm install
 
       # Snyk Test
       - name: Snyk Test
