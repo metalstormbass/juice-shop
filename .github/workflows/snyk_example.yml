@@ -19,16 +19,16 @@ jobs:
       #    sudo npm install -g snyk-to-html
 
       # Install Project Dependencies:
-      - run: npm install
+      - run: npm install --silent
 
       # Snyk Test
-      - name: Run Snyk Test
+      - name: Snyk Test
         uses: snyk/actions/node@master
         with:
           args: --severity-threshold=critical
 
       # Snyk Monitor
-      #- name: Run Snyk Monitor
+      #- name: Snyk Monitor
       #  uses: snyk/actions/node@master
       #  with:
       #    command: monitor
