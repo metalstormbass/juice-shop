@@ -34,9 +34,15 @@ jobs:
 
       # Snyk Test directly
       - run: |
-          snyk test --severity-threshold=high --json 
-          snyk-to-html -o ./results.html
+          snyk test --severity-threshold=high --json | snyk-to-html -o ./results.html
         continue-on-error: true
+
+      - run: |
+          snyk code test --severity-threshold=high
+        continue-on-error: true
+
+      - run: |
+          snyk monitor  --project-tags='owner=Reed' --project-business-criticality=low --target-reference=bad_dev
 
       # Upload Artifact
       - name: Upload html output
