@@ -1,0 +1,7 @@
+version: '2.1'
+orbs:
+  snyk: snyk/snyk@1.1.2
+workflows:
+  test:
+    jobs:
+      - snyk/scan-iac
