@@ -1,10 +1,10 @@
-version: 2.1
+version: 2.1 
 
 orbs:
-  snyk: snyk/snyk@x.y.z
+  snyk: snyk/snyk@1.1.2
 
 jobs:
-  build:
+    build:
       docker:
         - image: circleci/node:4.8.2
       steps:
