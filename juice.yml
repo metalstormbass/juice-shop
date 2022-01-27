@@ -36,7 +36,6 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  namespace: juice-namespace
   name: juice-shop-service
   labels:
     app: juice-shop-app
