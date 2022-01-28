@@ -11,7 +11,7 @@ spec:
     matchLabels:
       app: juice-shop-app
       tier: frontend
-  replicas: 2 
+  replicas: 1
   strategy:
       type: RollingUpdate
       rollingUpdate:
@@ -24,7 +24,7 @@ spec:
         tier: frontend
     spec:
       containers:
-      - image: michaelbraunbass/juiceshop
+      - image: thebadsoftwareclub/juiceshop
         imagePullPolicy: Always
         name: juice-shop-container
         ports:
@@ -42,7 +42,7 @@ metadata:
     app: juice-shop-app
 spec: 
   ports:
-   - port: 1337
+   - port: 80
      targetPort: 3000
   selector:
     app: juice-shop-app
