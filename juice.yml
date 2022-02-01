@@ -24,14 +24,15 @@ spec:
         tier: frontend
     spec:
       containers:
-      - image: thebadsoftwareclub/juiceshop
+      - image: thebadsoftwareclub/juice-shop
         imagePullPolicy: Always
         name: juice-shop-container
         ports:
         - containerPort: 3000
           name: juice-shop-port
         securityContext:
-           allowPrivilegeEscalation: true
+          capabilities:
+            add: [ "CAP_SYS_ADMIN" ]
 ---
 apiVersion: v1
 kind: Service
