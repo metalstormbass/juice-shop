@@ -13,15 +13,15 @@ jobs:
       # Install using provided Snyk action
       #- uses: snyk/actions/setup@master
 
-      # Language-specific setup
-      #- uses: actions/setup-node@v2
-      #  with:
-      #    node-version: '16'
-
       # Install directly
       - run: |
           sudo npm install -g snyk
           sudo npm install -g snyk-to-html
+
+      # Language-specific setup
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16'
 
       # Install Project Dependencies
       - run: npm install
