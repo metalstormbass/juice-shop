@@ -19,6 +19,7 @@ jobs:
           sudo npm install -g snyk-to-html
           snyk auth ${SNYK_TOKEN}
           npm install
+        continue-on-error: true
 
       # Language-specific setup
       #- uses: actions/setup-node@v2
