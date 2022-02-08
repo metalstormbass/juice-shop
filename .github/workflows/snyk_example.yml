@@ -17,11 +17,12 @@ jobs:
       - run: |
           sudo npm install -g snyk
           sudo npm install -g snyk-to-html
+          snyk auth ${SNYK_TOKEN}
 
       # Language-specific setup
-      - uses: actions/setup-node@v2
-        with:
-          node-version: '16'
+      #- uses: actions/setup-node@v2
+      #  with:
+      #    node-version: '16'
 
       # Install Project Dependencies
       - run: npm install
