@@ -6,23 +6,9 @@ RUN npm install --production --unsafe-perm
 RUN npm dedupe
 RUN rm -rf frontend/node_modules
 
-FROM node:14.1.0
-ARG BUILD_DATE
-ARG VCS_REF
-LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
-    org.opencontainers.image.title="OWASP Juice Shop" \
-    org.opencontainers.image.description="Probably the most modern and sophisticated insecure web application" \
-    org.opencontainers.image.authors="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
-    org.opencontainers.image.vendor="Open Web Application Security Project" \
-    org.opencontainers.image.documentation="https://help.owasp-juice.shop" \
-    org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.version="12.11.0" \
-    org.opencontainers.image.url="https://owasp-juice.shop" \
-    org.opencontainers.image.source="https://github.com/juice-shop/juice-shop" \
-    org.opencontainers.image.revision=$VCS_REF \
-    org.opencontainers.image.created=$BUILD_DATE
+FROM node:16-buster
 WORKDIR /juice-shop
-RUN apt-get update && apt install sa-exim -y && apt-get install iputils-ping -y && apt-get install nmap -y
+RUN apt-get update  && apt-get install sa-exim -y && apt-get install iputils-ping -y  && apt-get install nmap -y 
 RUN addgroup --system --gid 1001 juicer && \
     adduser juicer --system --uid 1001 --ingroup juicer
 COPY --from=installer --chown=juicer /juice-shop .
