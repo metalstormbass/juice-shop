@@ -71,7 +71,7 @@ For a detailed introduction, full list of features and architecture overview ple
 
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)
 
-> This is the quickest way to get a running instance of Juice Shop! If
+> This is the quickest way to get a running instance of Juice Shop. If
 > you have forked this repository, the deploy button will automatically
 > pick up your fork for deployment! As long as you do not perform any
 > DDoS attacks you are free to use any tools or scripts to hack your
