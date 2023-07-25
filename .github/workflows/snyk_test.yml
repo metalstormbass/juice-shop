@@ -23,7 +23,6 @@ jobs:
       run: |
          sudo npm install -g snyk
          sudo npm install -g snyk-to-html
-         snyk auth ${SNYK_TOKEN}
          npm install
       continue-on-error: true
     # Run Snyk Open Source
