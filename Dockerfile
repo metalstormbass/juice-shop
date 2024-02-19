@@ -6,9 +6,10 @@ RUN npm install --production --unsafe-perm
 RUN npm dedupe
 RUN rm -rf frontend/node_modules
 
-FROM node:14.1.0
+FROM node:16.20.2
 WORKDIR /juice-shop
-RUN apt-get update  && apt-get install curl -y && apt-get install sa-exim -y && apt-get install iputils-ping -y  && apt-get install nmap -y 
+RUN  apt-get install curl -y
+RUN  apt install openssl -y 
 RUN addgroup --system --gid 1001 juicer && \
     adduser juicer --system --uid 1001 --ingroup juicer
 COPY --from=installer --chown=juicer /juice-shop .
