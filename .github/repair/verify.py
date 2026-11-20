@@ -121,29 +121,41 @@ def main(output, max_candidates):
         (output / "baseline-tests.log").write_text(baseline_logs)
         write(output / "summary.json", summary)
         for index, (package, options) in enumerate(sorted(candidates.items())[:max_candidates]):
-            decision = decide({"package": package, "advisories": {v: sorted(ids) for v, ids in options.items()}},
-                              sorted(options))
-            version = decision["version"]
-            result = {"package": package, **decision}
-            if version == "defer":
+            remaining_options = dict(options)
+            while remaining_options:
+                decision = decide({
+                    "package": package,
+                    "advisories_by_candidate_version": {
+                        version: sorted(ids) for version, ids in remaining_options.items()
+                    },
+                }, sorted(remaining_options))
+                version = decision["version"]
+                result = {"package": package, **decision}
                 summary["results"].append(result)
-                continue
-            candidate = Path(tmp) / f"candidate-{index}"
-            shutil.copytree(source, candidate, ignore=shutil.ignore_patterns("node_modules", "build"))
-            updated = read(candidate / FILES[0])
-            updated["dependencies"][package] = version
-            write(candidate / FILES[0], updated)
-            try:
-                run("npm", "install", "--package-lock-only", "--package-lock=true", "--ignore-scripts",
-                    "--no-audit", directory=candidate)
-                remaining = findings(scan(candidate))
-                removed = {advisory for name, advisory in baseline - remaining if name == package}
-                if not options[version] <= removed or remaining - baseline:
-                    raise RuntimeError("Grype did not confirm target removal with zero new findings.")
-                candidate_diagnostics, logs = checks(candidate, diagnostics)
-            except (RuntimeError, subprocess.TimeoutExpired) as error:
-                result["validation_error"] = str(error)
-            else:
+                if version == "defer":
+                    write(output / "summary.json", summary)
+                    break
+                targets = remaining_options.pop(version)
+                candidate = Path(tmp) / f"candidate-{index}-{version}"
+                shutil.copytree(source, candidate, ignore=shutil.ignore_patterns("node_modules", "build"))
+                updated = read(candidate / FILES[0])
+                updated["dependencies"][package] = version
+                write(candidate / FILES[0], updated)
+                try:
+                    run("npm", "install", "--package-lock-only", "--package-lock=true", "--ignore-scripts",
+                        "--no-audit", directory=candidate)
+                    remaining = findings(scan(candidate))
+                    removed = {advisory for name, advisory in baseline - remaining if name == package}
+                    missing = targets - removed
+                    added = remaining - baseline
+                    if missing or added:
+                        result.update(persistent_targets=sorted(missing), new_findings=sorted(added))
+                        raise RuntimeError("Grype did not confirm target removal with zero new findings.")
+                    logs = checks(candidate)
+                except (RuntimeError, subprocess.TimeoutExpired) as error:
+                    result["validation_error"] = str(error)
+                    write(output / "summary.json", summary)
+                    continue
                 folder = output / str(index)
                 folder.mkdir()
                 for name in FILES:
@@ -154,8 +166,8 @@ def main(output, max_candidates):
                               hashes={name: hashlib.sha256((folder / name).read_bytes()).hexdigest()
                                       for name in FILES})
                 summary["verified"].append({"bundle": str(index), **result})
-            summary["results"].append(result)
-            write(output / "summary.json", summary)
+                write(output / "summary.json", summary)
+                break
 
 
 if __name__ == "__main__":
