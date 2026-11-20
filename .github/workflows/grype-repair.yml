@@ -1,0 +1,75 @@
+name: Grype dependency repair
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Open PRs for verified upgrades
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: grype-repair
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Match the project npm version
+        run: npm install --global npm@11.19.1
+      - name: Install pinned Grype
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fsSL --retry 3 -o grype.tar.gz https://github.com/anchore/grype/releases/download/v0.121.3/grype_0.121.3_linux_amd64.tar.gz
+          echo 'e9da18cc1429e786722e32161288103600efffd8e483c90761f90485bd1bec85  grype.tar.gz' | sha256sum --check
+          tar -xzf grype.tar.gz grype
+          ./grype db update
+          echo "$PWD" >> "$GITHUB_PATH"
+      - name: Scan, triage, build and test
+        id: verify
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GRYPE_DB_AUTO_UPDATE: 'false'
+        run: |
+          python3 .github/repair/verify.py "$RUNNER_TEMP/repair-evidence"
+          jq -r '"verified=" + ((.verified | length > 0) | tostring)' "$RUNNER_TEMP/repair-evidence/summary.json" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: grype-repair-evidence-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/repair-evidence
+          if-no-files-found: warn
+  publish:
+    needs: verify
+    if: github.repository == 'metalstormbass/juice-shop' && inputs.publish && needs.verify.outputs.verified == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: grype-repair-evidence-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/repair-evidence
+      - name: Open verified repair PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh auth setup-git
+          python3 .github/repair/publish.py "$RUNNER_TEMP/repair-evidence"
