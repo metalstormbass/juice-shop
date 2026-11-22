@@ -115,7 +115,7 @@ def execute(args, scanner=None, github=None, agent_send=None):
     if args.command == "inventory":
         emit(summary)
         return 0
-    scanner = scanner or OSV()
+    scanner = scanner or OSV(store=store)
     findings = scanner.scan(inventory)
     summary["findings"] = [finding.model_dump(exclude={"advisories"}) for finding in findings]
     if args.command in ("scan", "compare"):

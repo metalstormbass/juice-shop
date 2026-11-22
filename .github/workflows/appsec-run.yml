@@ -28,11 +28,18 @@ jobs:
           test -n "$OPENAI_API_KEY"
           "$RUNNER_TEMP/appsec-env/bin/appsec" reconcile --dry-run --ref HEAD \
             --config appsec/example.toml --inventory-out inventory.json > summary.json
-          jq '{dependencies, findings: (.findings|length), openai_calls, metrics}' summary.json | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - name: Explain each stage and link source evidence
+        run: "$RUNNER_TEMP/appsec-env/bin/python -m appsec.review --mode dry-run"
+      - id: audit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: appsec-reconciliation
           path: |
             inventory.json
             summary.json
             appsec.sqlite
+            review/
+      - name: Link review artifact
+        env:
+          ARTIFACT: ${{ steps.audit.outputs.artifact-url }}
+        run: echo "[Download the evidence and open review/README.md]($ARTIFACT)" >> "$GITHUB_STEP_SUMMARY"

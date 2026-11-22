@@ -9,8 +9,16 @@ BASE = "https://api.osv.dev/v1"
 
 
 class OSV:
-    def __init__(self, send=request):
+    def __init__(self, send=request, store=None):
         self.send = send
+        self.store = store
+
+    def fetch(self, method, url, data=None):
+        result = self.send(method, url, data) if data is not None else self.send(method, url)
+        if self.store:
+            self.store.event("osv-response", url, {"method": method, "url": url,
+                             "input": data, "output": result})
+        return result
 
     def scan(self, inventory):
         paths = defaultdict(list)
@@ -30,7 +38,7 @@ class OSV:
             for _ in range(30):
                 if not pending:
                     break
-                page = self.send("POST", BASE + "/querybatch", {"queries": list(pending.values())})
+                page = self.fetch("POST", BASE + "/querybatch", {"queries": list(pending.values())})
                 results = page["results"]
                 if len(results) != len(pending):
                     raise ValueError("OSV result count differs from query count")
@@ -49,7 +57,7 @@ class OSV:
                 for identifier in sorted(advisory_ids):
                     if identifier not in details:
                         url = BASE + "/vulns/" + quote(identifier, safe="")
-                        raw = self.send("GET", url)
+                        raw = self.fetch("GET", url)
                         if raw["id"] != identifier:
                             raise ValueError("OSV advisory identifier mismatch")
                         details[identifier] = None if raw.get("withdrawn") else Advisory(

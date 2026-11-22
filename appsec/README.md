@@ -91,3 +91,9 @@ python -m unittest discover -s appsec/tests -v
 ```
 
 The fixture starts with `minimist@1.2.5` at `node_modules/minimist`. It models `GHSA-xvch-5gv4-984h` and upgrades to `1.2.6`. The pipeline records `needs-validation`, synchronizes GitHub issue #1, verifies the scoped upgrade, opens draft PR #2, and marks the original issue `fixed` after a simulated merge and rescan. The test resets local state between runs to check that the same issue, commit, and draft PR are reused. HTTP responses and Docker calls are substituted in the offline tests. The npm package and advisory identifiers are real. [GitHub advisory](https://github.com/advisories/GHSA-xvch-5gv4-984h)
+
+## Checking a reconciliation run
+
+The GitHub job summary lists each stage, its inputs, its outputs, and the check a reviewer can perform. Download the reconciliation artifact, extract it, and open `review/README.md`. Each finding links its installed paths to advisory facts, lifecycle transitions and numbered OpenAI calls. Each call includes its supplied source excerpts, accepted output, and citation check. Skipped requests carry their reason in the finding record. The OSV exchanges appear in request order in `review/osv.jsonl`.
+
+To export a previous single-run reconciliation artifact, run `python -m appsec.review --db appsec.sqlite --mode dry-run --out review` in the extracted directory. Use `--mode apply` for a run that synchronized GitHub issues. Earlier databases can lack raw OSV exchanges and rejected call inputs.
