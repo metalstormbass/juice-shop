@@ -1,0 +1,57 @@
+name: AppSec PR scan
+
+on:
+  pull_request:
+    paths:
+      - '**/package-lock.json'
+      - '**/package.json'
+      - 'appsec/**'
+      - '.github/workflows/appsec-*.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install scanner from base branch
+        run: python -m pip install ./appsec
+      - name: Fetch PR data
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "refs/pull/$PR_NUMBER/merge"
+      - name: Scan candidate graph
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if ! git cat-file -e FETCH_HEAD:package-lock.json; then
+            if git cat-file -e "$BASE_SHA:package-lock.json"; then
+              echo 'The tracked npm lockfile was removed.' >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            echo 'Root package-lock.json is unavailable. Dependency coverage is incomplete.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          appsec scan --config appsec/example.toml --base-ref "$BASE_SHA" --ref FETCH_HEAD \
+            --inventory-out inventory.json | tee scan.json
+          python -m appsec.github_report scan scan.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: appsec-pr-scan
+          path: |
+            inventory.json
+            scan.json

@@ -1,0 +1,9 @@
+# Change this to the GitHub repository that owns the findings and draft PRs.
+repository = "local/repository"
+lockfile = "package-lock.json"
+model = "gpt-4.1-mini"
+agent_calls = 8
+remediation_attempts = 2
+input_cost_per_million = 0.4
+output_cost_per_million = 1.6
+run_npm_tests = false

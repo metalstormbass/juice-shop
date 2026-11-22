@@ -47,6 +47,7 @@ For a detailed introduction, full list of features and architecture overview ple
     - [Node.js version compatibility](#nodejs-version-compatibility)
     - [Troubleshooting](#troubleshooting)
     - [Official companion guide](#official-companion-guide)
+- [Dependency AppSec](appsec/README.md)
 - [Contributing](#contributing)
 - [References](#references)
 - [Merchandise](#merchandise)

@@ -1,0 +1,72 @@
+name: AppSec reconciliation
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: appsec-writes
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  reconcile:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install ./appsec
+      - name: Restore the most recent successful inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id="$(gh run list --workflow appsec-reconcile.yml --branch "$GITHUB_REF_NAME" \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          if [[ -n "$run_id" ]]; then
+            gh run download "$run_id" --name appsec-reconciliation --dir "$RUNNER_TEMP/appsec-prior" \
+              || echo 'Previous inventory artifact unavailable. A committed baseline can be used.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Reconcile findings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          baseline=()
+          if [[ -f "$RUNNER_TEMP/appsec-prior/inventory.json" ]]; then
+            baseline=(--base-inventory "$RUNNER_TEMP/appsec-prior/inventory.json")
+          elif [[ -f appsec/inventory-baseline.json ]]; then
+            baseline=(--base-inventory appsec/inventory-baseline.json)
+          fi
+          appsec reconcile --config appsec/example.toml --ref HEAD --apply \
+            --inventory-out inventory.json "${baseline[@]}" | tee summary.json
+      - name: Write step inputs, outputs and evidence
+        run: python -m appsec.review --mode apply
+      - id: audit
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: appsec-reconciliation
+          path: |
+            appsec.sqlite
+            inventory.json
+            summary.json
+            review/
+      - name: Link review artifact
+        env:
+          ARTIFACT: ${{ steps.audit.outputs.artifact-url }}
+        run: echo "[Download the evidence and open review/README.md]($ARTIFACT)" >> "$GITHUB_STEP_SUMMARY"
