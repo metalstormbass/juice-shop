@@ -71,10 +71,21 @@ def reconciliation(directory, mode):
              "| Dependency edits, compatibility tests and draft PR | Separate remediation workflow | "
              "Skipped during this reconciliation. |", "",
              "## Findings", "",
-             "The table shows findings marked ready for remediation. A passing fix requires a separate validation run.", ""]
+             "Local priority reflects the available application evidence. A passing fix requires a separate validation run.", ""]
+    assessed = [(call["input"]["facts"], call["accepted_output"]) for call in calls.values()
+                if call["accepted_output"] and call["accepted_output"].get("priority")]
+    if assessed:
+        lines += ["### Risk decisions", "",
+                  "| Dependency | Advisory | Local priority | Why act or investigate |",
+                  "|---|---|---|---|"]
+        for facts, assessment in assessed:
+            lines.append(f"| {text(facts['package'])}@{text(facts['installed_version'])} | "
+                         f"{advisory_links(facts['advisory_ids'])} | {text(assessment['priority'])} | "
+                         f"{text(assessment['priority_reason'])} |")
+        lines.append("")
     ready = [f for f in findings if f["state"]["status"] == "remediation-ready"]
     if ready:
-        lines += ["| Dependency | Advisory | OSV fix versions |", "|---|---|---|"]
+        lines += ["### Ready for remediation", "", "| Dependency | Advisory | OSV fix versions |", "|---|---|---|"]
         for f in ready:
             state = f["state"]
             fixes = (f["normalized_finding"] or {}).get("fix_versions", [])
@@ -99,7 +110,13 @@ def reconciliation(directory, mode):
                      f"Input: {len(call['source_evidence'])} source references and the advisory facts above.", ""]
             if result:
                 for field, value in result.items():
-                    if field != "evidence_ids":
+                    if isinstance(value, dict) and "assessment" in value:
+                        citations = ", ".join(value["evidence_ids"]) or "no source citation"
+                        body.append(f"- **{text(field.replace('_', ' ').capitalize())} · {text(value['status'])}** "
+                                    f"— {text(value['assessment'])} ({text(citations)})")
+                    elif field == "missing_evidence":
+                        body.append(f"- **Evidence still needed** — {text('; '.join(value) or 'None identified')}")
+                    elif field != "evidence_ids":
                         body.append(f"- **{text(field.replace('_', ' ').capitalize())}** — {text(value)}")
                 body.append("")
                 for ref in call["source_evidence"]:

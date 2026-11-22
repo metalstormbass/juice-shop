@@ -38,6 +38,7 @@ class Advisory(Record):
     aliases: list[str]
     modified: str
     summary: str
+    conditions_text: str = ""
     references: list[str]
     severity: list[dict[str, str]]
     affected: list[dict]
@@ -61,10 +62,25 @@ class Evidence(Record):
     id: str
     path: str
     line: int
+    kind: str = "text mention"
     text: str
 
 
+class Observation(Record):
+    status: Literal["supported", "contradicted", "unknown"]
+    assessment: str
+    evidence_ids: list[str]
+
+
 class Assessment(Record):
+    prerequisites: Observation
+    reachability: Observation
+    input_exposure: Observation
+    controls_and_limits: str
+    impact: str
+    priority: Literal["urgent", "high", "normal", "low", "investigate"]
+    priority_reason: str
+    missing_evidence: list[str]
     classification: Literal["confirmed affected", "potentially affected",
                             "not affected", "unknown"]
     reasoning: str

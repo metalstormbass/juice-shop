@@ -2,6 +2,7 @@ import hashlib
 from collections import defaultdict
 from urllib.parse import quote
 
+from .exposure import advisory_context
 from .models import Advisory, Finding
 from .transport import request
 
@@ -62,7 +63,8 @@ class OSV:
                             raise ValueError("OSV advisory identifier mismatch")
                         details[identifier] = None if raw.get("withdrawn") else Advisory(
                             id=identifier, modified=raw["modified"], aliases=raw.get("aliases", []),
-                            summary=raw.get("summary", ""), severity=raw.get("severity", []),
+                            summary=raw.get("summary", ""), conditions_text=advisory_context(raw.get("details", "")),
+                            severity=raw.get("severity", []),
                             references=sorted({ref["url"] for ref in raw.get("references", [])
                                                if ref["url"].startswith("https://")}),
                             affected=raw.get("affected", []), provenance=url)

@@ -97,3 +97,9 @@ The fixture starts with `minimist@1.2.5` at `node_modules/minimist`. It models `
 Open the Summary tab of the GitHub run for stage results, a remediation table, and expandable finding decisions with source citations. The same readable report is saved as `review/REPORT.md`. Download the reconciliation artifact, extract it, and open `review/README.md`. Each finding links its installed paths to advisory facts, lifecycle transitions and numbered OpenAI calls. Each call includes its supplied source excerpts, accepted output, and citation check. Skipped requests carry their reason in the finding record. The OSV exchanges appear in request order in `review/osv.jsonl`.
 
 To export a previous single-run reconciliation artifact, run `python -m appsec.review --db appsec.sqlite --mode dry-run --out review` in the extracted directory. Use `--mode apply` for a run that synchronized GitHub issues. Earlier databases can lack raw OSV exchanges and rejected call inputs.
+
+### How triage assesses local risk
+
+OSV establishes the affected version. Triage also receives the advisory description, installed dependency types and parents, and bounded repository excerpts. The collector labels manifest entries, build configuration, project imports, possible calls to imported names, tests, and plain text mentions. The queue prioritizes findings with evidence of project use within the request budget.
+
+Each assessment records advisory prerequisites, static reachability, input exposure, controls, possible impact, local priority, and missing evidence. Confirmation requires citations for all three exposure observations and a candidate call in the reviewed project. The scanner uses lexical matching and lockfile metadata. Dynamic loading, actual deployment configuration, transitive execution and runtime input provenance can require maintainer verification. Local priority is a review recommendation. Risk acceptance remains a human decision.

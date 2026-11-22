@@ -1,6 +1,7 @@
 from .agents import evidence
+from .exposure import graph_context
 from .github import MARKER, issue_payload, marker
-from .models import Evidence, Finding, Transition
+from .models import Finding, Transition
 from .store import digest
 from .validation import review_exposure
 
@@ -35,15 +36,38 @@ def reconcile(root, inventory, findings, store, agents, github=None):
 
     seen = set()
     output = []
+    queue = []
+    packages = {}
     for scanned in findings:
         identity = next((key for key, old in sorted(states.items()) if matching(scanned, old)), scanned.finding_id)
         finding = scanned.model_copy(update={"finding_id": identity})
+        key = (finding.package, tuple(finding.dependency_paths))
+        if key not in packages:
+            graph = graph_context(inventory, finding)
+            aliases = [path.rsplit("node_modules/", 1)[-1] for path in finding.dependency_paths]
+            options = {"lockfile": inventory.repository.lockfile, "aliases": aliases}
+            references = evidence(root, finding.package, **options)
+            resolvable = any(path == "node_modules/" + alias for path, alias in zip(finding.dependency_paths, aliases))
+            kinds = {ref.kind for ref in references}
+            # Spend bounded triage calls first on findings with observed application use.
+            rank = (not (resolvable and "project call candidate" in kinds),
+                    not (resolvable and "project import" in kinds),
+                    not any(d["type"] == "production" for d in graph["installed"]))
+            packages[key] = rank, options, references, graph, resolvable
+        rank, options, references, graph, resolvable = packages[key]
+        queue.append((rank, finding, options, references, graph, resolvable))
+
+    for _, finding, options, references, graph, resolvable in sorted(queue, key=lambda entry: entry[0]):
+        identity = finding.finding_id
         seen.add(identity)
         old = states.get(identity, {})
         fact_hash = digest(finding)
-        refs = [item.model_dump() for item in evidence(root, finding.package)]
-        references = [Evidence.model_validate(ref) for ref in refs]
-        fingerprint = digest([fact_hash, refs])
+        refs = [item.model_dump() for item in references]
+        context = {"dependency_scope": graph, "root_resolvable": resolvable,
+                   "advisory_context": [{"id": record.id, "description": record.conditions_text,
+                                         "summary": record.summary, "source": record.provenance}
+                                        for record in finding.advisories[:4]]}
+        fingerprint = digest(["risk-triage-v2", fact_hash, refs, context])
         labels = {label["name"] for label in remote.get(identity, {}).get("labels", [])}
         accepted = "risk-accepted" in labels
         display = old.get("display", {}) if old.get("fingerprint") == fingerprint else {}
@@ -61,7 +85,7 @@ def reconcile(root, inventory, findings, store, agents, github=None):
             status, reason = old["status"], old["reason"]
         else:
             if not display.get("assessment"):
-                assessment = agents.run("triage", finding, references)
+                assessment = agents.run("triage", finding, references, **context)
                 if assessment:
                     display = {"assessment": assessment.model_dump(), "evidence": refs}
             assessment = display.get("assessment")
@@ -70,7 +94,7 @@ def reconcile(root, inventory, findings, store, agents, github=None):
                 classification = assessment["classification"]
                 if classification in ("potentially affected", "unknown"):
                     if not display.get("investigation"):
-                        expanded = evidence(root, finding.package, limit=24)
+                        expanded = evidence(root, finding.package, limit=24, **options)
                         investigation = agents.run("hunt", finding, expanded, assessment=assessment)
                         if investigation:
                             display["hunt_evidence"] = [item.model_dump() for item in expanded]
