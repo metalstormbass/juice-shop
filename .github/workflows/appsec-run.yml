@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   reconcile:
+    name: Dependency reconciliation
     if: github.actor == 'metalstormbass'
     runs-on: ubuntu-latest
     timeout-minutes: 25
