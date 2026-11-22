@@ -82,9 +82,13 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
     aliases = set(finding.advisory_ids)
     if any(item.package == finding.package and aliases.intersection(item.advisory_ids) for item in after):
         return Validation(result="fail", checks=["OSV still reports the original advisory"])
-    if {item.finding_id for item in after} - {item.finding_id for item in before}:
-        return Validation(result="fail", checks=["OSV reports new findings in the updated graph"])
-    checks = ["Original version absent", "Original advisory absent and no new OSV findings"]
+    known = {}
+    for item in before:
+        known.setdefault(item.package, set()).update(item.advisory_ids)
+    # Advisories that already affected the package may remain until a later fix; only new ones are regressions.
+    if any(not known.get(item.package, set()).intersection(item.advisory_ids) for item in after):
+        return Validation(result="fail", checks=["OSV reports new advisories in the updated graph"])
+    checks = ["Original version absent", "Original advisory absent and no new OSV advisories"]
     if not config.run_npm_tests:
         return Validation(result="inconclusive", checks=[*checks, "Reviewed npm test execution is disabled"])
     manifest_dir = (directory / repository.lockfile).parent

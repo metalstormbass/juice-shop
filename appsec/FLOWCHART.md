@@ -13,7 +13,11 @@ package.json or package-lock.json changes
   +-- Default branch --> Reconcile the committed dependency graph
                            |
                            v
-                    Queue every current finding (one parallel job each)
+                    Open GitHub Issues track every finding
+                           |
+                           v
+                    Queue eligible findings, at most (3 - open AppSec PRs),
+                    one parallel job each
                            |
                            v
                     Agents review compatibility and propose tests
@@ -32,8 +36,11 @@ package.json or package-lock.json changes
                                           finding's issue; no PR is opened
 ```
 
-Every finding is queued; the agent request budget only limits AI commentary, not
-which findings are attempted. PRs always come from verified upgrades against the
+Every finding has an issue. To stay within free Actions limits, a run queues only
+eligible findings (fixable, not risk-accepted, not already attempted at this revision)
+up to the number of free slots under a cap of three open AppSec PRs. Merging or closing
+PRs frees slots; the next manifest change or manual dispatch continues with the
+remaining findings. There is no schedule. PRs always come from verified upgrades against the
 committed default branch, so a finding with no passing same-major fix gets no PR.
 Merging a PR changes the manifests and starts the next run for the remaining findings.
 

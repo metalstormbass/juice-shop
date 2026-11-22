@@ -379,6 +379,24 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["remediations"][0]["escalation"], "No candidate passed independent verification")
         self.assertIsNone(self.remote.pull)
 
+    def test_remaining_known_advisories_pass_but_new_advisories_fail(self):
+        from appsec.remediation import validate_fix
+        original, = self.scanner.scan(collect(self.root / "package-lock.json", self.repo))
+        other = original.model_copy(update={"finding_id": "b" * 32, "advisory_ids": ["OTHER"]})
+        fixed = self.temp / "fixed"
+        fixed.mkdir()
+        shutil.copyfile(FIXTURES / "fixed-lock.json", fixed / "package-lock.json")
+
+        def scanner(ids):
+            return type("Scanner", (), {"scan": lambda _, inventory: [
+                original.model_copy(update={"finding_id": "c" * 32, "installed_version": "1.2.6",
+                                            "advisory_ids": ids})]})()
+
+        known = validate_fix(fixed, self.repo, [original, other], original, scanner(["OTHER"]), self.npm, Config())
+        self.assertNotIn("fail", known.result)
+        new = validate_fix(fixed, self.repo, [original, other], original, scanner(["BRAND-NEW"]), self.npm, Config())
+        self.assertEqual(new.result, "fail")
+
     def test_human_risk_acceptance_blocks_remediation(self):
         scan = self.command("reconcile")
         key = scan["findings"][0]["finding_id"]

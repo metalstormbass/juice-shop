@@ -12,7 +12,7 @@ flowchart TD
     Hunt --> Evidence[Exposure evidence and unresolved validation]
     Evidence --> State
     State --> Issues[GitHub Issues]
-    Issues --> Request[Maintainer requests remediation]
+    Issues --> Request[Queue eligible findings, max 3 open PRs]
     Request --> Review[OpenAI compatibility and test advice]
     Review --> Upgrade[Scoped npm upgrade]
     Upgrade --> Verify[Independent install, tests and OSV rescan]
