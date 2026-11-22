@@ -31,7 +31,8 @@ ROLES = {
     "test-review": (TestReview, "Explain in plain language what the supplied test and verification results show about "
                     "whether the upgraded application still behaves correctly. Name behavior the cited existing "
                     "tests exercise for this dependency, and what no supplied test exercises. Report failures "
-                    "exactly as given. Do not invent results, counts or tests."),
+                    "exactly as given. Use the structured check list (counts are authoritative) and at most two sentences per "
+                    "field. Do not invent results, counts or tests."),
     "pr": (Narrative, "Write for a maintainer in short plain sentences. exposure: whether and how this "
            "application's own code uses the affected package, citing evidence IDs; if usage is not evidenced, say "
            "so. rationale: why this specific version fixes the advisory and why it is the smallest safe change. "

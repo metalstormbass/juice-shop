@@ -337,7 +337,7 @@ class PipelineTest(unittest.TestCase):
         from appsec.exposure import references, advisory_context
         (self.root / "Dockerfile").write_text("FROM node:24\nRUN npm ci --omit=dev\n")
         self.git("add", "Dockerfile")
-        refs = references(self.root, "minimist")
+        refs = references(self.root, "minimist", dev_only=True)
         self.assertTrue(any(r.kind == "project call candidate" and "parse(process.argv" in r.text for r in refs))
         self.assertTrue(any(r.kind == "build configuration" and "--omit=dev" in r.text for r in refs))
         self.assertEqual(advisory_context("Applicable in build mode.\n## Proof of concept\nexample"),
@@ -406,6 +406,30 @@ class PipelineTest(unittest.TestCase):
                            scanner(["BRAND-NEW"], ["1.2.9"]), self.npm, Config())
         self.assertEqual(new.result, "fail")
         self.assertEqual(new.retry_versions, ["1.2.9"])
+
+    def test_transitive_dependency_points_at_manifest_parent_and_its_call_sites(self):
+        from appsec.exposure import chains, options_for, references
+        path = self.root / "package-lock.json"
+        lock = json.loads(path.read_text())
+        lock["packages"][""]["dependencies"] = {"wrapper": "1.0.0"}
+        lock["packages"]["node_modules/wrapper"] = {
+            "version": "1.0.0", "resolved": "https://registry.npmjs.org/wrapper/-/wrapper-1.0.0.tgz",
+            "dependencies": {"minimist": "1.2.5"}}
+        path.write_text(json.dumps(lock))
+        (self.root / "package.json").write_text('{\n  "dependencies": {\n    "wrapper": "1.0.0"\n  }\n}\n')
+        (self.root / "src/cli.cjs").write_text("const wrapper = require('wrapper')\nwrapper.run(process.argv)\n")
+        (self.root / "Dockerfile").write_text("FROM node:24\nRUN npm ci --omit=dev\n")
+        self.git("add", ".")
+        inventory = collect(path, self.repo)
+        finding, = self.scanner.scan(inventory)
+        self.assertEqual(chains(inventory, finding), [["wrapper", "minimist"]])
+        refs = references(self.root, "minimist", **options_for(inventory, finding))
+        kinds = {r.kind for r in refs}
+        self.assertTrue({"manifest", "project import of parent wrapper",
+                         "project call candidate of parent wrapper"} <= kinds)
+        self.assertNotIn("Dockerfile", {r.path for r in refs})
+        manifest, = (r for r in refs if r.kind == "manifest")
+        self.assertIn('"wrapper"', manifest.text)
 
     def test_pull_request_table_summarizes_real_test_output(self):
         from appsec.pr_body import describe

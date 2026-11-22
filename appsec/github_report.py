@@ -11,8 +11,8 @@ from urllib.parse import quote
 
 def text(value):
     # External advisory and model text must stay literal in Markdown tables and details.
-    escaped = html.escape(str(value)).replace("\n", " ").replace("\r", " ")
-    return re.sub(r"[\\|`*_~\[\]@#!]", lambda m: f"&#{ord(m[0])};", escaped)
+    flat = str(value).replace("\n", " ").replace("\r", " ")
+    return re.sub(r"[&<>\"'\\|`*_~\[\]@#!]", lambda m: f"&#{ord(m[0])};", flat)
 
 
 def advisory_links(ids):

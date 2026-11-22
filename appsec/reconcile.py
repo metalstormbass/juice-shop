@@ -1,5 +1,5 @@
 from .agents import evidence
-from .exposure import graph_context
+from .exposure import graph_context, options_for
 from .github import MARKER, issue_payload, marker
 from .models import Finding, Transition
 from .store import digest
@@ -47,8 +47,8 @@ def reconcile(root, inventory, findings, store, agents, github=None, write=True)
         key = (finding.package, tuple(finding.dependency_paths))
         if key not in packages:
             graph = graph_context(inventory, finding)
-            aliases = [path.rsplit("node_modules/", 1)[-1] for path in finding.dependency_paths]
-            options = {"lockfile": inventory.repository.lockfile, "aliases": aliases}
+            options = options_for(inventory, finding)
+            aliases = options["aliases"]
             references = evidence(root, finding.package, **options)
             resolvable = any(path == "node_modules/" + alias for path, alias in zip(finding.dependency_paths, aliases))
             kinds = {ref.kind for ref in references}

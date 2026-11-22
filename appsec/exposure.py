@@ -33,12 +33,51 @@ def graph_context(inventory, finding):
             "parent_packages": parents[:12], "parent_count": len(parents)}
 
 
-def references(root, package, *, limit=16, lockfile="package-lock.json", aliases=()):
+def chains(inventory, finding, depth=8):
+    """Dependency chains from a direct dependency to each installed copy, e.g. express-jwt -> moment."""
+    by_path = {d.path: d for d in inventory.dependencies}
+    parents = {}
+    for dep in inventory.dependencies:
+        for target in dep.edges.values():
+            parents.setdefault(target, []).append(dep.path)
+    result = []
+    for start in finding.dependency_paths:
+        frontier = [[start]]
+        for _ in range(depth):
+            frontier = [[parent, *chain] if not by_path[chain[0]].direct else chain
+                        for chain in frontier for parent in (parents.get(chain[0], [None])
+                                                             if not by_path[chain[0]].direct else [None])]
+            frontier = [chain for chain in frontier if None not in chain]
+            if all(by_path[chain[0]].direct for chain in frontier):
+                break
+        for chain in frontier[:3]:
+            names = [by_path[path].name for path in chain]
+            if by_path[chain[0]].direct and names not in result:
+                result.append(names)
+    return result[:4]
+
+
+def options_for(inventory, finding):
+    aliases = [path.rsplit("node_modules/", 1)[-1] for path in finding.dependency_paths]
+    paths = set(finding.dependency_paths)
+    installed = [d for d in inventory.dependencies if d.path in paths]
+    via = sorted({chain[0] for chain in chains(inventory, finding)} - {finding.package, *aliases})
+    return {"lockfile": inventory.repository.lockfile, "aliases": aliases, "via": via,
+            "dev_only": bool(installed) and all(d.type != "production" for d in installed)}
+
+
+def references(root, package, *, limit=16, lockfile="package-lock.json", aliases=(), via=(), dev_only=False):
     project = Path(lockfile).parent
-    names = "|".join(re.escape(n) for n in sorted({package, *aliases}))
-    spec = rf"""['"](?:{names})(?:/[^'"]+)?['"]"""
-    imported = re.compile(rf"(?:\bfrom\s*|\bimport\s*|\b(?:require|import)\s*\(\s*){spec}")
+
+    def matcher(names):
+        spec = rf"""['"](?:{"|".join(re.escape(n) for n in sorted(names))})(?:/[^'"]+)?['"]"""
+        return re.compile(rf"(?:\bfrom\s*|\bimport\s*|\b(?:require|import)\s*\(\s*){spec}")
+
+    targets = [{"label": "", "names": {package, *aliases}, "imported": matcher({package, *aliases}), "symbols": set()}]
+    targets += [{"label": f" of parent {name}", "names": {name}, "imported": matcher({name}), "symbols": set()}
+                for name in via]
     bind = re.compile(rf"\bimport\s+(?:\*\s+as\s+)?({IDENT})\s+from|\b(?:const|let|var)\s+({IDENT})\s*=\s*require")
+    declared = {package, *aliases, *via}
     rows = []
     files = subprocess.check_output(["git", "ls-files", "-z"], cwd=root, timeout=15)
     for name in sorted(os.fsdecode(files).split("\0")):
@@ -61,39 +100,53 @@ def references(root, package, *, limit=16, lockfile="package-lock.json", aliases
         if any((parent / "package.json").is_file() for parent in path.parents
                if parent != root / project and parent.is_relative_to(root / project)):
             scope = "other project"
-        symbols = set()
+        for target in targets:
+            target["symbols"] = set()
         for number, line in enumerate(lines, 1):
-            if SECRET.search(line) or line.lstrip().startswith(("//", "/*", "*")):
+            sensitive = bool(SECRET.search(line))
+            if line.lstrip().startswith(("//", "/*", "*")) or (sensitive and (build or manifest)):
                 continue
-            if build and (re.match(r"^FROM\s|^RUN npm (install|ci|dedupe).*--omit=dev", line) or package in line):
-                kind, rank = "build configuration", 3
-            elif manifest and package in line:
-                kind, rank = "manifest", 4
-            elif imported.search(line) and not re.match(r"^\s*(?:export|import)\s+type\b", line):
-                kind, rank = f"{scope} import", 1
-                if match := bind.search(line):
-                    symbols.add(next(s for s in match.groups() if s))
-                if named := re.search(r"\bimport\s*\{([^}]+)\}", line):
-                    symbols.update(s.strip().split(" as ")[-1] for s in named[1].split(",")
-                                   if re.fullmatch(IDENT + r"(?: as " + IDENT + ")?", s.strip()))
-            elif any(re.search(rf"(?<![\w$]){re.escape(s)}\s*(?:\.\s*{IDENT}\s*)?\(", line) for s in symbols):
-                kind, rank = f"{scope} call candidate", 0
-            elif package in line:
-                kind, rank = "text mention", 5
+            kind = None
+            if build:
+                # The Dockerfile only matters when it mentions the package or a production-only install hides a dev package.
+                if package in line or (dev_only and re.match(r"^RUN npm (install|ci|dedupe).*--omit=dev", line)):
+                    kind, rank, group = "build configuration", 3, "build"
+            elif manifest:
+                if any(re.search(rf'"{re.escape(name)}"\s*:', line) for name in declared):
+                    kind, rank, group = "manifest", 1, "manifest"
             else:
+                for target in targets:
+                    suffix = target["label"]
+                    if target["imported"].search(line) and not re.match(r"^\s*(?:export|import)\s+type\b", line):
+                        kind, rank, group = f"{scope} import{suffix}", 1 + bool(suffix), f"import{suffix}"
+                        if match := bind.search(line):
+                            target["symbols"].add(next(s for s in match.groups() if s))
+                        if named := re.search(r"\bimport\s*\{([^}]+)\}", line):
+                            target["symbols"].update(s.strip().split(" as ")[-1] for s in named[1].split(",")
+                                                     if re.fullmatch(IDENT + r"(?: as " + IDENT + ")?", s.strip()))
+                        break
+                    if any(re.search(rf"(?<![\w$]){re.escape(s)}\s*(?:\.\s*{IDENT}\s*)?\(", line)
+                           for s in target["symbols"]):
+                        kind, rank, group = f"{scope} call candidate{suffix}", int(bool(suffix)), f"call{suffix}"
+                        if not suffix and scope == "project" and not sensitive and INPUT_SOURCE.search(line):
+                            rows.append((0, name, number, "input origin at call", line.strip()[:300], "origin"))
+                        break
+                if kind is None and package in line:
+                    kind, rank, group = "text mention", 5, "text"
+            if kind is None:
                 continue
-            if kind == "project call candidate" and INPUT_SOURCE.search(line):
-                rows.append((0, name, number, "input origin at call", line.strip()[:300]))
-            rows.append((rank + (2 if scope != "project" and not build else 0), name, number, kind, line.strip()[:300]))
+            shown = "[line withheld: matches the sensitive-value filter]" if sensitive else line.strip()[:300]
+            rows.append((rank + (2 if scope != "project" and not build and not manifest else 0),
+                         name, number, kind, shown, f"{scope}:{group}"))
     selected = []
-    by_kind = Counter()
+    by_group = Counter()
     for row in sorted(rows):
-        kind = row[3]
-        if by_kind[kind] >= max(2, limit // 3):
+        group = row[5]
+        if by_group[group] >= max(2, limit // 3):
             continue
         selected.append(row)
-        by_kind[kind] += 1
+        by_group[group] += 1
         if len(selected) == limit:
             break
     return [Evidence(id=f"E{i}", path=name, line=number, kind=kind, text=line)
-            for i, (_, name, number, kind, line) in enumerate(selected, 1)]
+            for i, (_, name, number, kind, line, _) in enumerate(selected, 1)]

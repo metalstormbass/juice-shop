@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from .agents import Agents, evidence
+from .exposure import chains, options_for
 from .config import Config, load
 from .github import GitHub, issue_payload
 from .inventory import collect, compare
@@ -149,7 +150,7 @@ def execute(args, scanner=None, github=None, agent_send=None):
                 raise ValueError("Finding is absent from the current scan")
         finding = selected[0]
         state = states[finding.finding_id]
-        refs = evidence(root, finding.package)
+        refs = evidence(root, finding.package, **options_for(inventory, finding))
         assessment = state["display"].get("assessment")
         if args.command == "hunt":
             result = agents.run("hunt", finding, refs, assessment=assessment)
@@ -162,7 +163,7 @@ def execute(args, scanner=None, github=None, agent_send=None):
         if args.command == "remediate":
             def remediate_finding(finding):
                 state = store.all("state:" + scope)[finding.finding_id]
-                refs = evidence(root, finding.package)
+                refs = evidence(root, finding.package, **options_for(inventory, finding))
                 assessment = state["display"].get("assessment")
                 result = {"finding_id": finding.finding_id, "package": finding.package,
                           "installed_version": finding.installed_version}
@@ -186,12 +187,18 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     store.put("attempts", finding.finding_id, result["attempts"])
                     if not files:
                         result["escalation"] = "No candidate passed independent verification"
-                digest = [{"command": check.splitlines()[0][:200] if check else "", "tail": check[-700:]}
-                          for check in (attempts[-1].validation.checks if attempts else [])]
+                from .pr_body import describe
+                digest = []
+                for check in (attempts[-1].validation.checks if attempts else []):
+                    label, passed, detail = describe(check)
+                    digest.append({"check": label, "passed": passed, "counts": detail,
+                                   **({} if passed else {"failure_tail": check[-700:]})})
+                history = [{"version": item.version, "result": item.validation.result} for item in attempts]
                 if attempts:
                     review = agents.run("test-review", finding, refs, assessment=assessment,
                                         proposal=result.get("test_proposal"), version=attempts[-1].version,
-                                        outcome=attempts[-1].validation.result, checks=digest)
+                                        outcome=attempts[-1].validation.result, attempts=history,
+                                        checks=digest)
                     if review:
                         result["test_review"] = review.model_dump()
                 if not files and github:
@@ -204,13 +211,13 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     store.put("state:" + scope, finding.finding_id, state)
                 if files:
                     story = agents.run("pr", finding, refs, assessment=assessment, advice=advice.model_dump() if advice else None,
-                                       version=attempts[-1].version, checks=digest)
+                                       version=attempts[-1].version, attempts=history, checks=digest)
                     narrative = story.model_dump() if story else {"exposure": None, "residual_risks": "Human review required"}
                     result["draft"] = {"files": sorted(files), "validation": attempts[-1].model_dump(),
                                        "narrative": narrative}
                     if github:
                         issue = github.call("GET", f"/issues/{issue_number}")
-                        extra = {"advice": advice.model_dump() if advice else None,
+                        extra = {"chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
                                  "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
                         pull = github.draft(repo, issue, finding, files, attempts[-1], narrative,
                                             refs=refs, attempts=attempts, extra=extra)

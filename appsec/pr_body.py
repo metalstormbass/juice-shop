@@ -26,7 +26,7 @@ def describe(check):
     if command.startswith("npm rebuild"):
         label += " " + command.split()[2]
     detail = ""
-    counts = {key: re.search(rf"^# {key} (\d+)", check, re.M) for key in ("tests", "pass", "fail", "skipped")}
+    counts = {key: re.search(rf"^(?:#|ℹ) {key} (\d+)", check, re.M) for key in ("tests", "pass", "fail", "skipped")}
     if counts["tests"] and counts["pass"] and counts["fail"]:
         detail = f"{counts['pass'][1]} passed, {counts['fail'][1]} failed"
         if counts["skipped"] and counts["skipped"][1] != "0":
@@ -39,6 +39,35 @@ def source_links(repository, refs, ids):
     by_id = {ref.id: ref for ref in refs}
     return [f"[`{ref.path.replace('`', '')}` line {ref.line}]({base}{quote(ref.path)}#L{ref.line})"
             for ref in (by_id[i] for i in ids if i in by_id)]
+
+
+def usage_lines(repository, finding, refs, chains):
+    """Deterministic account of where the package is declared and called in this repository."""
+    base = f"https://github.com/{repository.slug}/blob/{repository.revision}/"
+
+    def item(ref):
+        code = ref.text.replace("`", "'")[:110]
+        return f"- [`{ref.path.replace('`', '')}:{ref.line}`]({base}{quote(ref.path)}#L{ref.line}) — `{code}`"
+
+    lines = []
+    if chains:
+        lines += ["**Dependency chain:** " + "; ".join(" → ".join(f"`{n}`" for n in chain) for chain in chains), ""]
+    manifest = [r for r in refs if r.kind == "manifest"]
+    lines += ["**Declared in `package.json`:**", *(map(item, manifest) if manifest else
+              ["- Not declared directly; it is installed only as a transitive dependency."]), ""]
+    calls = [r for r in refs if r.kind.startswith("project ") and ("call" in r.kind or "import" in r.kind)]
+    lines += ["**Called from application code:**"]
+    if calls:
+        lines += [*map(item, calls[:8]), ""]
+    else:
+        names = ", ".join(sorted({c[0] for c in chains})) or finding.package
+        lines += [f"- No import or call of `{text(finding.package)}`"
+                  + (f" or of `{text(names)}`" if names != finding.package else "")
+                  + " was found in application source (lexical search; dynamic loading is not detected).", ""]
+    tests = [r for r in refs if r.kind.startswith("test ")]
+    if tests:
+        lines += ["**Used in tests:**", *map(item, tests[:4]), ""]
+    return lines
 
 
 def render(repository, issue, finding, attempt, attempts, narrative, refs, extra):
@@ -54,9 +83,7 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     lines += ["Installed at: " + ", ".join(f"`{p.replace('`', '')}`" for p in finding.dependency_paths[:5]), "",
               "## 2. Why it affects this code", "",
               text(narrative.get("exposure") or "Application use has not been established."), ""]
-    cited = source_links(repository, refs, narrative.get("evidence_ids", []))
-    if cited:
-        lines += ["Evidence: " + " · ".join(cited), ""]
+    lines += usage_lines(repository, finding, refs, extra.get("chains") or [])
     lines += ["## 3. Why this fix", "",
               text(narrative.get("rationale") or f"{attempt.version} is a same-major release OSV lists as fixed."), ""]
     if advice.get("compatibility_risks"):
@@ -79,7 +106,7 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
         lines += ["**AI test review**", "", text(review.get("summary", "")), "",
                   f"- **Behavior exercised:** {text(review.get('behavior_covered', ''))}",
                   f"- **Not covered by tests:** {text(review.get('untested_behavior', ''))}", ""]
-        tests = source_links(repository, refs, review.get("evidence_ids", []))
+        tests = source_links(repository, [r for r in refs if "test" in r.kind], review.get("evidence_ids", []))
         if tests:
             lines += ["Relevant tests: " + " · ".join(tests), ""]
     if proposal := extra.get("proposal"):
