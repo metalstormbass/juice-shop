@@ -86,7 +86,7 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     lines += usage_lines(repository, finding, refs, extra.get("chains") or [])
     lines += ["## 3. Why this fix", "",
               text(narrative.get("rationale") or f"{attempt.version} is a same-major release OSV lists as fixed."), ""]
-    if advice.get("compatibility_risks"):
+    if advice.get("compatibility_risks") and len(attempts) == 1:
         lines += [f"Compatibility risk noted: {text(advice['compatibility_risks'])}", ""]
     if len(attempts) > 1:
         lines += ["Versions tried before this one:", ""]

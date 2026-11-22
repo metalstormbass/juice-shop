@@ -147,22 +147,26 @@ Independent fix validation
 
 ## Verified GitHub status
 
-The risk-triage dry run completed on the AppSec branch. It inventoried 1,248
-dependency paths and reported 54 findings. Eight OpenAI calls produced three
-accepted triage assessments and three follow-up investigations. Two triage
-outputs were rejected for invalid citations.
+The automated run inventoried the lockfile and reported 54 findings, each tracked by an
+issue. Five have a same-major OSV fix, and three are attempted per run under the
+three-open-PR cap.
 
-- **51 need triage**
-- **3 need validation**
-- **0 were marked ready for remediation**
+- **[#203](https://github.com/metalstormbass/juice-shop/pull/203)** upgrades `moment`
+  2.0.0 → 2.31.0 after 2.19.3 and 2.29.4 each exposed other advisories. Server unit
+  tests (441 passed, 0 failed), the sqlite3 rebuild and the TypeScript check pass.
+- **`sanitize-html`** 1.4.2 has no passing upgrade: 1.4.3 fails a server unit test
+  (Juice Shop's XSS challenge relies on the old behavior) and 1.11.4 exposes another
+  advisory. No PR is opened; the reason is recorded on the issue.
 
-The dry run ended at reporting. Issue synchronization, dependency edits,
-fix validation, and draft PR creation require their respective apply or
-remediation workflows.
-
-[GitHub Actions run](https://github.com/metalstormbass/juice-shop/actions/runs/45070764850) · [Risk decisions and source citations](https://github.com/metalstormbass/juice-shop/blob/5d045132dbc88ca09e105c58719c06a6dd198b80/appsec/reports/run-45070764850.md#risk-decisions)
+[GitHub Actions run](https://github.com/metalstormbass/juice-shop/actions/runs/45077134734)
 
 ## Evidence limits
+
+Exposure evidence follows the dependency chain. For a transitive package such as
+`moment` it lists the `package.json` entry for the direct parent (`express-jwt`) and
+the places application code imports or calls that parent. Dockerfile lines appear only
+when they mention the package. Lines matching the sensitive-value filter keep their
+location but their text is withheld.
 
 Confirmation requires cited advisory prerequisites, a candidate application call,
 and evidence of input provenance. Static excerpts can leave runtime behavior
