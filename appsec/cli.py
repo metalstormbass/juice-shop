@@ -132,7 +132,10 @@ def execute(args, scanner=None, github=None, agent_send=None):
     states = store.all("state:" + scope)
     summary["states"] = {key: state["status"] for key, state in states.items()}
     summary["queue"] = [{"finding_id": item.finding_id, "package": item.package,
-                         "installed_version": item.installed_version, "fixable": bool(candidates(item))}
+                         "installed_version": item.installed_version, "fixable": bool(candidates(item)),
+                         "eligible": bool(candidates(item)) and states[item.finding_id]["status"] not in (
+                             "remediation-in-progress", "risk-accepted")
+                         and states[item.finding_id].get("attempted_revision") != sha}
                         for item in findings]
     every = args.command == "remediate" and getattr(args, "all_findings", False)
     if args.command in ("triage", "hunt", "validate", "remediate") and (args.finding_id or every):

@@ -6,8 +6,6 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
-  schedule:
-    - cron: '17 5 * * *'
   workflow_dispatch:
 
 permissions:
@@ -30,6 +28,7 @@ jobs:
       contents: read
       issues: write
       actions: read
+      pull-requests: read
     outputs:
       queue: ${{ steps.queue.outputs.queue }}
     steps:
@@ -64,8 +63,17 @@ jobs:
           appsec reconcile --config appsec/example.toml --ref HEAD --apply \
             --inventory-out inventory.json "${baseline[@]}" | tee summary.json
       - id: queue
-        name: Queue every finding for remediation
-        run: echo "queue=$(jq -c '[.queue[] | {finding_id, package, installed_version}][:250]' summary.json)" >> "$GITHUB_OUTPUT"
+        name: Queue eligible findings within the open PR limit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAX_OPEN_PULLS: 3
+        run: |
+          open="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("appsec/"))] | length')"
+          slots=$(( MAX_OPEN_PULLS > open ? MAX_OPEN_PULLS - open : 0 ))
+          echo "Open AppSec PRs: $open. Remediation slots: $slots." >> "$GITHUB_STEP_SUMMARY"
+          echo "queue=$(jq -c --argjson n "$slots" \
+            '[.queue[] | select(.eligible) | {finding_id, package, installed_version}][:$n]' summary.json)" >> "$GITHUB_OUTPUT"
       - name: Write step inputs, outputs and evidence
         run: python -m appsec.review --mode apply
       - id: audit

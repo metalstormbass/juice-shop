@@ -2,8 +2,8 @@
 
 ## Automated workflow
 
-Runs when `package.json` or `package-lock.json` changes on the default branch,
-daily, or on manual dispatch.
+Runs when `package.json` or `package-lock.json` changes on the default branch
+or on manual dispatch. At most three AppSec PRs are open at once.
 
 ```text
 package.json or package-lock.json changes

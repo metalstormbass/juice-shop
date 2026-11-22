@@ -71,7 +71,7 @@ Set `OPENAI_API_KEY` as an Actions secret, enable GitHub Actions to create pull 
 | Workflow | Trigger and result |
 | --- | --- |
 | AppSec PR scan | Relevant PR updates. The base revision supplies scanner code. The candidate supplies the lockfile as Git data. The job has read access and publishes counts and artifacts. |
-| AppSec reconciliation and remediation | A push to the default branch that changes `package.json` or `package-lock.json`, daily at 05:17 UTC, or manual dispatch. Matches dependencies, synchronizes issues, then runs one parallel remediation job per finding. Each job opens a draft PR only after the OSV rescan, install, sqlite3 rebuild, server unit tests and TypeScript compile check pass, and then dispatches independent PR validation. |
+| AppSec reconciliation and remediation | A push to the default branch that changes `package.json` or `package-lock.json`, or manual dispatch. At most three AppSec PRs are open at once. Matches dependencies, synchronizes issues, then runs one parallel remediation job per finding. Each job opens a draft PR only after the OSV rescan, install, sqlite3 rebuild, server unit tests and TypeScript compile check pass, and then dispatches independent PR validation. |
 | AppSec manual remediation | Dispatch from the default branch with the issue's finding ID. Tries a bounded set of same-major fixes. Creates or reuses a draft only after verification passes. |
 | AppSec remediation validation | Runs on eligible PR events or by dispatch with the PR number. Requires a same-repository AppSec branch and tests the candidate manifests against trusted base code. |
 
