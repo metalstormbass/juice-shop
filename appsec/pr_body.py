@@ -1,0 +1,93 @@
+"""Four-part pull request description: finding, exposure, fix rationale and testing."""
+import re
+from urllib.parse import quote
+
+from .github_report import advisory_links, text
+from .github import protected
+
+LABELS = (
+    ("npm install", "Lockfile regenerated for the new version"),
+    ("npm ci", "Clean install from the new lockfile"),
+    ("npm rebuild", "Native package rebuilt"),
+    ("npm run test:server", "Server unit tests"),
+    ("npm exec -- tsc --noEmit", "TypeScript compile check"),
+    ("npm test", "Project tests"),
+)
+
+
+def describe(check):
+    """Turn one recorded check into a (label, passed, detail) row."""
+    first = check.splitlines()[0] if check else ""
+    match = re.match(r"(npm .*?) exited (\d+)\.", first)
+    if not match:
+        return text(first), True, ""
+    command, code = match[1], int(match[2])
+    label = next((name for prefix, name in LABELS if command.startswith(prefix)), text(command))
+    if command.startswith("npm rebuild"):
+        label += " " + command.split()[2]
+    detail = ""
+    counts = {key: re.search(rf"^# {key} (\d+)", check, re.M) for key in ("tests", "pass", "fail", "skipped")}
+    if counts["tests"] and counts["pass"] and counts["fail"]:
+        detail = f"{counts['pass'][1]} passed, {counts['fail'][1]} failed"
+        if counts["skipped"] and counts["skipped"][1] != "0":
+            detail += f", {counts['skipped'][1]} skipped"
+    return label, code == 0, detail
+
+
+def source_links(repository, refs, ids):
+    base = f"https://github.com/{repository.slug}/blob/{repository.revision}/"
+    by_id = {ref.id: ref for ref in refs}
+    return [f"[`{ref.path.replace('`', '')}` line {ref.line}]({base}{quote(ref.path)}#L{ref.line})"
+            for ref in (by_id[i] for i in ids if i in by_id)]
+
+
+def render(repository, issue, finding, attempt, attempts, narrative, refs, extra):
+    review = extra.get("test_review") or {}
+    advice = extra.get("advice") or {}
+    summary = next((a.summary for a in finding.advisories if a.summary), "")
+    lines = [f"Related issue #{issue['number']}. Human review required.", "",
+             "## 1. The finding", "",
+             f"**{text(finding.package)}** {text(finding.installed_version)} → **{text(attempt.version)}** "
+             f"· severity {text(finding.severity)} · {advisory_links(finding.advisory_ids)}", ""]
+    if summary:
+        lines += [f"> {text(summary[:300])}", ""]
+    lines += ["Installed at: " + ", ".join(f"`{p.replace('`', '')}`" for p in finding.dependency_paths[:5]), "",
+              "## 2. Why it affects this code", "",
+              text(narrative.get("exposure") or "Application use has not been established."), ""]
+    cited = source_links(repository, refs, narrative.get("evidence_ids", []))
+    if cited:
+        lines += ["Evidence: " + " · ".join(cited), ""]
+    lines += ["## 3. Why this fix", "",
+              text(narrative.get("rationale") or f"{attempt.version} is a same-major release OSV lists as fixed."), ""]
+    if advice.get("compatibility_risks"):
+        lines += [f"Compatibility risk noted: {text(advice['compatibility_risks'])}", ""]
+    if len(attempts) > 1:
+        lines += ["Versions tried before this one:", ""]
+        for earlier in attempts[:-1]:
+            last = earlier.validation.checks[-1] if earlier.validation.checks else ""
+            label, passed, _ = describe(last)
+            reason = f"{label} failed" if last.startswith("npm ") and not passed else last
+            lines.append(f"- {text(earlier.version)}: {text(earlier.validation.result)} — {text(reason[:200])}")
+        lines.append("")
+    lines += ["## 4. Testing", "", "| Check | Result |", "|---|---|"]
+    for check in attempt.validation.checks:
+        label, passed, detail = describe(check)
+        lines.append(f"| {label} | {'✅' if passed else '❌'} {text(detail)} |")
+    lines += ["", f"Verification outcome: **{text(attempt.validation.result)}**. "
+              "The PR only changes `package.json` and `package-lock.json`.", ""]
+    if review:
+        lines += ["**AI test review**", "", text(review.get("summary", "")), "",
+                  f"- **Behavior exercised:** {text(review.get('behavior_covered', ''))}",
+                  f"- **Not covered by tests:** {text(review.get('untested_behavior', ''))}", ""]
+        tests = source_links(repository, refs, review.get("evidence_ids", []))
+        if tests:
+            lines += ["Relevant tests: " + " · ".join(tests), ""]
+    if proposal := extra.get("proposal"):
+        lines += [f"Compatibility behavior to keep protected: {text(proposal['behavior'])} "
+                  f"(expected: {text(proposal['expected_result'])}).", ""]
+    if narrative.get("residual_risks"):
+        lines += [f"**Remaining uncertainty:** {text(narrative['residual_risks'])}", ""]
+    lines += ["<details><summary>Raw command output</summary>", ""]
+    lines += [protected(check) + "\n" for check in attempt.validation.checks]
+    lines += ["</details>"]
+    return "\n".join(lines)

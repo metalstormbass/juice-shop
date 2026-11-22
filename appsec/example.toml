@@ -2,7 +2,7 @@
 repository = "local/repository"
 lockfile = "package-lock.json"
 model = "gpt-4.1-mini"
-agent_calls = 30
+agent_calls = 60
 remediation_attempts = 3
 input_cost_per_million = 0.4
 output_cost_per_million = 1.6

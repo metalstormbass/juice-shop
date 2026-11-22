@@ -15,15 +15,19 @@ def version_key(version):
     return tuple(map(int, version.split(".")))
 
 
-def candidates(finding):
-    def stable(value):
-        return EXACT.fullmatch(value) and "-" not in value and "+" not in value
+def stable(value):
+    return EXACT.fullmatch(value) and "-" not in value and "+" not in value
 
-    if not stable(finding.installed_version):
-        return []
-    original = version_key(finding.installed_version)
-    return sorted({version for version in finding.fix_versions if stable(version)
-                   and version_key(version) > original and version_key(version)[0] == original[0]},
+
+def acceptable(installed, version):
+    """A stable, newer release in the same major version as the installed one."""
+    if not stable(installed) or not stable(version):
+        return False
+    return version_key(version) > version_key(installed) and version_key(version)[0] == version_key(installed)[0]
+
+
+def candidates(finding):
+    return sorted({version for version in finding.fix_versions if acceptable(finding.installed_version, version)},
                   key=version_key)
 
 
@@ -86,8 +90,14 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
     for item in before:
         known.setdefault(item.package, set()).update(item.advisory_ids)
     # Advisories that already affected the package may remain until a later fix; only new ones are regressions.
-    if any(not known.get(item.package, set()).intersection(item.advisory_ids) for item in after):
-        return Validation(result="fail", checks=["OSV reports new advisories in the updated graph"])
+    fresh = [item for item in after if not known.get(item.package, set()).intersection(item.advisory_ids)]
+    if fresh:
+        retry = sorted({version for item in fresh if item.package == finding.package
+                        for version in item.fix_versions if acceptable(finding.installed_version, version)},
+                       key=version_key)
+        return Validation(result="fail", retry_versions=retry[-1:],
+                          checks=["OSV reports new advisories in the updated graph: "
+                                  + ", ".join(sorted({a for item in fresh for a in item.advisory_ids}))])
     checks = ["Original version absent", "Original advisory absent and no new OSV advisories"]
     if not config.run_npm_tests:
         return Validation(result="inconclusive", checks=[*checks, "Reviewed npm test execution is disabled"])
@@ -133,7 +143,13 @@ def remediate(root, repository, inventory, findings, finding, config, scanner, r
     attempts = []
     lock_path = Path(repository.lockfile)
     manifest_path = lock_path.with_name("package.json")
-    for version in candidates(finding)[:config.remediation_attempts]:
+    queue = candidates(finding)
+    tried = set()
+    while queue and len(attempts) < config.remediation_attempts:
+        version = queue.pop(0)
+        if version in tried:
+            continue
+        tried.add(version)
         with tempfile.TemporaryDirectory(prefix="appsec-fix-") as temporary:
             directory = Path(temporary).resolve()
             with tarfile.open(fileobj=BytesIO(archive)) as tar:
@@ -164,10 +180,13 @@ def remediate(root, repository, inventory, findings, finding, config, scanner, r
                                        "--no-fund", "--registry=https://registry.npmjs.org"], network=True)
             if ok:
                 validation = validate_fix(directory, repository, findings, finding, scanner, run, config)
-                validation = Validation(result=validation.result, checks=[message, *validation.checks])
+                validation = Validation(result=validation.result, checks=[message, *validation.checks],
+                                        retry_versions=validation.retry_versions)
             else:
                 validation = Validation(result="fail", checks=[message])
             attempts.append(Attempt(version=version, validation=validation))
+            # A newer release that clears the advisories introduced by this one is tried next.
+            queue = [v for v in validation.retry_versions if v not in tried] + queue
             if validation.result == "pass":
                 return attempts, {str(manifest_path): manifest_file.read_text(), str(lock_path): lock.read_text()}
             if validation.result == "inconclusive":

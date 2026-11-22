@@ -29,11 +29,27 @@ package.json or package-lock.json changes
                     Independent verification: OSV rescan, npm ci, sqlite3 rebuild,
                     server unit tests and a TypeScript compile check
                            |
-                           +-- Passed --> One draft PR per finding with test output,
-                           |              then independent PR validation
+                           +-- Upgrade exposes other advisories --> retry with the
+                           |     OSV fix version that clears them (attempt limit applies)
                            |
-                           +-- Failed or no same-major fix --> Reason recorded on the
-                                          finding's issue; no PR is opened
+                           v
+                    AI test review reads the results, names the behavior the
+                    existing tests exercise and what they do not cover
+                           |
+                           +-- Passed --> One draft PR per finding, then independent
+                           |              PR validation
+                           |
+                           +-- Failed or no same-major fix --> Reason and AI test review
+                                          recorded on the finding's issue; no PR is opened
+
+Draft PR layout:
+  1. The finding       package, versions, severity, advisories, advisory summary
+  2. Why it affects    AI explanation of how this code uses the package, with source links
+     this code
+  3. Why this fix      AI rationale, compatibility risk, versions tried before
+  4. Testing           pass/fail table (install, rebuild, unit tests with counts,
+                       compile check), AI test review, remaining uncertainty,
+                       raw command output
 ```
 
 Every finding has an issue. To stay within free Actions limits, a run queues only

@@ -186,22 +186,34 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     store.put("attempts", finding.finding_id, result["attempts"])
                     if not files:
                         result["escalation"] = "No candidate passed independent verification"
+                digest = [{"command": check.splitlines()[0][:200] if check else "", "tail": check[-700:]}
+                          for check in (attempts[-1].validation.checks if attempts else [])]
+                if attempts:
+                    review = agents.run("test-review", finding, refs, assessment=assessment,
+                                        proposal=result.get("test_proposal"), version=attempts[-1].version,
+                                        outcome=attempts[-1].validation.result, checks=digest)
+                    if review:
+                        result["test_review"] = review.model_dump()
                 if not files and github:
                     issue = github.call("GET", f"/issues/{issue_number}")
                     state = {**state, "status": "needs-human-review", "reason": result["escalation"],
                              "attempted_revision": sha,
-                             "display": {**state["display"], "remediation_attempts": result.get("attempts", [])}}
+                             "display": {**state["display"], "remediation_attempts": result.get("attempts", []),
+                                         "test_review": result.get("test_review")}}
                     github.sync(issue, issue_payload(finding, state))
                     store.put("state:" + scope, finding.finding_id, state)
                 if files:
-                    story = agents.run("pr", finding, refs, assessment=assessment,
-                                       validation=attempts[-1].model_dump())
-                    narrative = story.model_dump() if story else {"exposure": assessment, "residual_risks": "Human review required"}
+                    story = agents.run("pr", finding, refs, assessment=assessment, advice=advice.model_dump() if advice else None,
+                                       version=attempts[-1].version, checks=digest)
+                    narrative = story.model_dump() if story else {"exposure": None, "residual_risks": "Human review required"}
                     result["draft"] = {"files": sorted(files), "validation": attempts[-1].model_dump(),
                                        "narrative": narrative}
                     if github:
                         issue = github.call("GET", f"/issues/{issue_number}")
-                        pull = github.draft(repo, issue, finding, files, attempts[-1], narrative)
+                        extra = {"advice": advice.model_dump() if advice else None,
+                                 "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
+                        pull = github.draft(repo, issue, finding, files, attempts[-1], narrative,
+                                            refs=refs, attempts=attempts, extra=extra)
                         store.put("pull", finding.finding_id, pull)
                         state = {**state, "status": "remediation-in-progress", "pull": pull.number,
                                  "reason": "Draft remediation PR exists"}

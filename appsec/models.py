@@ -108,6 +108,13 @@ class RemediationAdvice(Record):
     evidence_ids: list[str]
 
 
+class TestReview(Record):
+    summary: str
+    behavior_covered: str
+    untested_behavior: str
+    evidence_ids: list[str]
+
+
 class Narrative(Record):
     exposure: str
     rationale: str
@@ -135,6 +142,8 @@ class ExposureValidation(Record):
 class Validation(Record):
     result: Literal["pass", "fail", "inconclusive"]
     checks: list[str]
+    # Fix versions OSV lists for advisories that appear only after the upgrade.
+    retry_versions: list[str] = []
 
 
 class Attempt(Record):

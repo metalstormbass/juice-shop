@@ -12,7 +12,7 @@ from .cli import read_inventory, revision
 from .config import load
 from .models import Repository
 from .osv import OSV
-from .remediation import candidates, revised_manifest, run_npm, validate_fix
+from .remediation import acceptable, revised_manifest, run_npm, validate_fix
 
 
 def verify(pr, config, root, scanner, run):
@@ -50,8 +50,11 @@ def verify(pr, config, root, scanner, run):
             tar.extractall(root_copy, filter="data")
         original = json.loads((root_copy / manifest).read_text())
         candidate = subprocess.check_output(["git", "show", f"{sha}:{manifest}"], cwd=root, timeout=15)
-        if not any(json.loads(candidate) == revised_manifest(original, finding, version)
-                   for version in candidates(finding)):
+        proposed = json.loads(candidate)
+        version = next((value for group in ("dependencies", "devDependencies", "optionalDependencies", "overrides")
+                        if isinstance(value := proposed.get(group, {}).get(finding.package), str)), None)
+        if (version is None or not acceptable(finding.installed_version, version)
+                or proposed != revised_manifest(original, finding, version)):
             raise ValueError("Manifest changes differ from the approved dependency operation")
         (root_copy / manifest).write_bytes(candidate)
         (root_copy / lock).write_bytes(subprocess.check_output(

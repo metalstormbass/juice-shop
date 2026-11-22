@@ -150,6 +150,8 @@ class PipelineTest(unittest.TestCase):
                             "compatibility_risks": "Test argument parsing", "evidence_ids": ["E1"]},
             "test_development": {"behavior": "Boolean flag handling", "expected_result": "Flag is true",
                                  "evidence_ids": ["E2"]},
+            "test_review": {"summary": "Compatibility tests passed", "behavior_covered": "Flag parsing",
+                            "untested_behavior": "Deployment-specific input", "evidence_ids": ["E2"]},
             "pr": {"exposure": "Parser used by the fixture", "rationale": "Upgrade passed compatibility tests",
                    "residual_risks": "Human review of application exposure", "evidence_ids": ["E1"]},
         }
@@ -203,7 +205,13 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(self.remote.files, ["package-lock.json", "package.json"])
         self.assertEqual(self.commands, [("install", True), ("ci", True), ("test", False)])
         self.assertTrue(self.remote.pull["draft"])
-        self.assertIn("Related issue #1", self.remote.pull["body"])
+        body = self.remote.pull["body"]
+        self.assertIn("Related issue #1", body)
+        for heading in ("## 1. The finding", "## 2. Why it affects this code", "## 3. Why this fix", "## 4. Testing"):
+            self.assertIn(heading, body)
+        self.assertIn("AI test review", body)
+        self.assertIn("| npm ci fixture result | ✅", body)
+        self.assertIn("test_review", self.agent_roles)
         self.command("remediate", key, fresh=True)
         self.assertEqual((self.remote.creates, self.remote.commits, self.remote.drafts), (1, 1, 1))
         self.remote.pull["state"] = "closed"
@@ -387,15 +395,25 @@ class PipelineTest(unittest.TestCase):
         fixed.mkdir()
         shutil.copyfile(FIXTURES / "fixed-lock.json", fixed / "package-lock.json")
 
-        def scanner(ids):
+        def scanner(ids, fixes=()):
             return type("Scanner", (), {"scan": lambda _, inventory: [
                 original.model_copy(update={"finding_id": "c" * 32, "installed_version": "1.2.6",
-                                            "advisory_ids": ids})]})()
+                                            "advisory_ids": ids, "fix_versions": list(fixes)})]})()
 
         known = validate_fix(fixed, self.repo, [original, other], original, scanner(["OTHER"]), self.npm, Config())
         self.assertNotIn("fail", known.result)
-        new = validate_fix(fixed, self.repo, [original, other], original, scanner(["BRAND-NEW"]), self.npm, Config())
+        new = validate_fix(fixed, self.repo, [original, other], original,
+                           scanner(["BRAND-NEW"], ["1.2.9"]), self.npm, Config())
         self.assertEqual(new.result, "fail")
+        self.assertEqual(new.retry_versions, ["1.2.9"])
+
+    def test_pull_request_table_summarizes_real_test_output(self):
+        from appsec.pr_body import describe
+        output = ("npm run test:server exited 0. Output SHA-256 abc\nFinal 90 output bytes\n"
+                  "# tests 314\n# suites 98\n# pass 312\n# fail 0\n# cancelled 0\n# skipped 2\n")
+        self.assertEqual(describe(output), ("Server unit tests", True, "312 passed, 0 failed, 2 skipped"))
+        self.assertEqual(describe("npm exec -- tsc --noEmit exited 2. Output SHA-256 abc")[:2],
+                         ("TypeScript compile check", False))
 
     def test_human_risk_acceptance_blocks_remediation(self):
         scan = self.command("reconcile")
