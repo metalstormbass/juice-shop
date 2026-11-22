@@ -94,6 +94,6 @@ The fixture starts with `minimist@1.2.5` at `node_modules/minimist`. It models `
 
 ## Checking a reconciliation run
 
-The GitHub job summary lists each stage, its inputs, its outputs, and the check a reviewer can perform. Download the reconciliation artifact, extract it, and open `review/README.md`. Each finding links its installed paths to advisory facts, lifecycle transitions and numbered OpenAI calls. Each call includes its supplied source excerpts, accepted output, and citation check. Skipped requests carry their reason in the finding record. The OSV exchanges appear in request order in `review/osv.jsonl`.
+Open the Summary tab of the GitHub run for stage results, a remediation table, and expandable finding decisions with source citations. The same readable report is saved as `review/REPORT.md`. Download the reconciliation artifact, extract it, and open `review/README.md`. Each finding links its installed paths to advisory facts, lifecycle transitions and numbered OpenAI calls. Each call includes its supplied source excerpts, accepted output, and citation check. Skipped requests carry their reason in the finding record. The OSV exchanges appear in request order in `review/osv.jsonl`.
 
 To export a previous single-run reconciliation artifact, run `python -m appsec.review --db appsec.sqlite --mode dry-run --out review` in the extracted directory. Use `--mode apply` for a run that synchronized GitHub issues. Earlier databases can lack raw OSV exchanges and rejected call inputs.

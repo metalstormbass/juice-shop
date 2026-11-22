@@ -2,13 +2,14 @@
 import argparse
 import html
 import json
-import os
 import re
 import sqlite3
 from collections import Counter, defaultdict
 from contextlib import closing
 from pathlib import Path
 from urllib.parse import quote
+
+from .github_report import publish_summary, reconciliation
 
 
 def write_json(path, value):
@@ -135,9 +136,7 @@ if __name__ == "__main__":
     parser.add_argument("--out", type=Path, default=Path("review"))
     parser.add_argument("--mode", choices=("dry-run", "apply"), required=True)
     args = parser.parse_args()
-    lines = export(args.db, args.out, args.mode)
-    if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
-        # Artifact-relative links work in the downloaded report. Show filenames on GitHub.
-        summary = re.sub(r"\[([^\]]+)\]\(((?!https://)[^()]+)\)", r"\1 (`\2`)", "\n".join(lines))
-        with open(summary_path, "a") as stream:
-            print(summary, file=stream)
+    export(args.db, args.out, args.mode)
+    report = reconciliation(args.out, args.mode)
+    (args.out / "REPORT.md").write_text(report)
+    publish_summary(report)
