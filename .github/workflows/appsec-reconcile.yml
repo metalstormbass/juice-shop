@@ -1,14 +1,17 @@
-name: AppSec reconciliation
+name: AppSec reconciliation and remediation
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
-  issues: write
-  actions: read
 
 concurrency:
   group: appsec-writes
@@ -23,6 +26,12 @@ jobs:
     if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    outputs:
+      queue: ${{ steps.queue.outputs.queue }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,6 +63,9 @@ jobs:
           fi
           appsec reconcile --config appsec/example.toml --ref HEAD --apply \
             --inventory-out inventory.json "${baseline[@]}" | tee summary.json
+      - id: queue
+        name: Queue every finding for remediation
+        run: echo "queue=$(jq -c '[.queue[] | {finding_id, package, installed_version}][:250]' summary.json)" >> "$GITHUB_OUTPUT"
       - name: Write step inputs, outputs and evidence
         run: python -m appsec.review --mode apply
       - id: audit
@@ -70,3 +82,52 @@ jobs:
         env:
           ARTIFACT: ${{ steps.audit.outputs.artifact-url }}
         run: echo "[Download the evidence and open review/README.md]($ARTIFACT)" >> "$GITHUB_STEP_SUMMARY"
+
+  remediate:
+    name: Remediate ${{ matrix.package }}@${{ matrix.installed_version }}
+    needs: reconcile
+    if: needs.reconcile.outputs.queue != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include: ${{ fromJSON(needs.reconcile.outputs.queue) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install ./appsec
+      - name: Upgrade, test and open a draft PR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FINDING_ID: ${{ matrix.finding_id }}
+        run: |
+          [[ "$FINDING_ID" =~ ^[a-f0-9]{32}$ ]]
+          appsec remediate --config appsec/example.toml --ref HEAD --apply --finding-id "$FINDING_ID" | tee summary.json
+          python -m appsec.github_report remediation summary.json --finding-id "$FINDING_ID"
+      - name: Run independent PR verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pull="$(jq -r '.pull.number // empty' summary.json)"
+          if [[ -n "$pull" ]]; then
+            gh workflow run appsec-validation.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f pull_number="$pull"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: appsec-remediation-${{ matrix.finding_id }}
+          path: |
+            appsec.sqlite
+            summary.json

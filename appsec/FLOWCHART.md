@@ -1,39 +1,43 @@
 # Dependency AppSec workflow
 
-## Target workflow
+## Automated workflow
 
-This is the requested approach, not the current implementation.
+Runs when `package.json` or `package-lock.json` changes on the default branch,
+daily, or on manual dispatch.
 
 ```text
 package.json or package-lock.json changes
   |
   +-- Pull request --> Scan the candidate dependency graph without write access
   |
-  +-- Default branch --> Scan and reconcile the committed dependency graph
+  +-- Default branch --> Reconcile the committed dependency graph
                            |
                            v
-                    Queue every current finding
+                    Queue every current finding (one parallel job each)
                            |
                            v
-                    Agents review each finding and attempt a fix
+                    Agents review compatibility and propose tests
                            |
                            v
-                    Independently verify the fix and run tests
+                    Upgrade within the same major version, regenerate the lockfile
                            |
-                           +-- Passed --> Open or reuse a separate draft PR
-                           |              for the finding, with test results
+                           v
+                    Independent verification: OSV rescan, npm ci, sqlite3 rebuild,
+                    server unit tests and a TypeScript compile check
                            |
-                           +-- Failed, inconclusive or no fix available
-                                          --> Record results and request human review
+                           +-- Passed --> One draft PR per finding with test output,
+                           |              then independent PR validation
+                           |
+                           +-- Failed or no same-major fix --> Reason recorded on the
+                                          finding's issue; no PR is opened
 ```
 
-The queue must track every finding through a completed or explicitly blocked
-outcome; a per-run request budget must not silently leave findings unprocessed.
-Pull request scans must not create remediation PRs from untrusted candidate code.
-Remediation PRs target the committed default branch and require a verified fix;
-findings without one cannot honestly have a tested fix PR.
+Every finding is queued; the agent request budget only limits AI commentary, not
+which findings are attempted. PRs always come from verified upgrades against the
+committed default branch, so a finding with no passing same-major fix gets no PR.
+Merging a PR changes the manifests and starts the next run for the remaining findings.
 
-## Current workflow
+## Detailed stages
 
 ```text
 npm package-lock.json (v2 or v3)

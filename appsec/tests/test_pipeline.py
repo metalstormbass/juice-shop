@@ -179,10 +179,10 @@ class PipelineTest(unittest.TestCase):
                 shutil.copyfile(FIXTURES / "fixed-lock.json", directory / "package-lock.json")
         return (self.test_passes or args[0] != "test"), f"npm {args[0]} fixture result"
 
-    def command(self, command, finding_id=None, *, fresh=False):
+    def command(self, command, finding_id=None, *, fresh=False, every=False):
         args = Namespace(root=self.root, config=self.config, db=self.temp / "state.sqlite",
                          command=command, ref="HEAD", apply=True, inventory_out=None,
-                         base_inventory=None, base_ref=None, finding_id=finding_id)
+                         base_inventory=None, base_ref=None, finding_id=finding_id, all_findings=every)
         if fresh:
             args.db.unlink(missing_ok=True)
         out = io.StringIO()
@@ -353,6 +353,31 @@ class PipelineTest(unittest.TestCase):
         finding, = OSV(send).scan(collect(self.root / "package-lock.json", self.repo))
         self.assertEqual(query_tokens, [None, "more"])
         self.assertEqual(len(finding.advisories), 2)
+
+    def test_remediating_every_finding_reuses_triage_and_runs_project_tests(self):
+        self.config.write_text('repository = "example/fixture"\nrun_npm_tests = true\n'
+                               'rebuild_packages = ["sqlite3"]\n'
+                               'test_commands = [["run", "test:server"], ["exec", "--", "tsc", "--noEmit"]]\n')
+        scan = self.command("reconcile")
+        self.assertEqual(scan["queue"][0]["package"], "minimist")
+        self.assertTrue(scan["queue"][0]["fixable"])
+        triage_calls = self.agent_roles.count("triage")
+        result = self.command("remediate", fresh=True, every=True)
+        self.assertEqual(self.agent_roles.count("triage"), triage_calls)
+        self.assertEqual(result["remediations"][0]["pull"]["number"], 2)
+        self.assertEqual(self.commands, [("install", True), ("ci", True), ("rebuild", True),
+                                         ("run", False), ("exec", False)])
+
+    def test_failing_project_test_blocks_the_draft_and_records_the_reason(self):
+        self.config.write_text('repository = "example/fixture"\nrun_npm_tests = true\n'
+                               'test_commands = [["run", "test:server"], ["exec", "--", "tsc", "--noEmit"]]\n')
+        self.command("reconcile")
+        original = self.npm
+        self.npm = lambda directory, args, **kw: (False, "tests failed") if args[0] == "run" else original(directory, args, **kw)
+        result = self.command("remediate", fresh=True, every=True)
+        self.assertNotIn("exec", [name for name, _ in self.commands])
+        self.assertEqual(result["remediations"][0]["escalation"], "No candidate passed independent verification")
+        self.assertIsNone(self.remote.pull)
 
     def test_human_risk_acceptance_blocks_remediation(self):
         scan = self.command("reconcile")

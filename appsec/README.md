@@ -34,7 +34,7 @@ pip install ./appsec
 appsec --help
 ```
 
-Choose the lockfile in [example.toml](example.toml). The workflows target the root lockfile. To switch their scope, update the config and the paths used by the PR scan. Juice Shop currently ignores npm lockfiles and sets `package-lock=false` in its root npm configuration. To enable live automation, generate an npm v2 or v3 lockfile with your approved Node and npm versions, review it, and track it on your default branch. This intentionally changes the repository's dependency policy, so evaluate that change in your fork first.
+Choose the lockfile in [example.toml](example.toml). The workflows target the root lockfile. To switch their scope, update the config and the paths used by the PR scan. Juice Shop ignores npm lockfiles and sets `package-lock=false` in its root npm configuration. This fork force-tracks a root `package-lock.json` (npm v3) so the workflows have an exact dependency graph; the AppSec commands pass `--package-lock=true` explicitly.
 
 ```bash
 npm install --package-lock-only --package-lock=true --ignore-scripts --no-audit --no-fund
@@ -62,7 +62,7 @@ appsec report
 
 Use a consistent config and database across commands. The `--ref` option inventories the committed lockfile. Local inventory comparison also accepts `--base-inventory`.
 
-Before enabling `run_npm_tests`, review the trusted checkout's `npm test` script and confirm it can run after an install with lifecycle hooks disabled and with the test container's network disabled. Some projects, including Juice Shop, require project-specific build steps before their full suite can run under those constraints. The supplied fixture works with the standard runner. Unverified upgrades escalate to human review.
+Set `test_commands` and `rebuild_packages` in the config to choose the checks that run offline after installation. Before enabling `run_npm_tests`, review the trusted checkout's test scripts and confirm it can run after an install with lifecycle hooks disabled and with the test container's network disabled. Some projects, including Juice Shop, require project-specific build steps before their full suite can run under those constraints. The supplied fixture works with the standard runner. Unverified upgrades escalate to human review.
 
 ## GitHub Actions
 
@@ -71,7 +71,7 @@ Set `OPENAI_API_KEY` as an Actions secret, enable GitHub Actions to create pull 
 | Workflow | Trigger and result |
 | --- | --- |
 | AppSec PR scan | Relevant PR updates. The base revision supplies scanner code. The candidate supplies the lockfile as Git data. The job has read access and publishes counts and artifacts. |
-| AppSec reconciliation | Daily at 05:17 UTC or manual dispatch on the default branch. Matches dependencies, processes a bounded number of AI assessments, and synchronizes issues. |
+| AppSec reconciliation and remediation | A push to the default branch that changes `package.json` or `package-lock.json`, daily at 05:17 UTC, or manual dispatch. Matches dependencies, synchronizes issues, then runs one parallel remediation job per finding. Each job opens a draft PR only after the OSV rescan, install, sqlite3 rebuild, server unit tests and TypeScript compile check pass, and then dispatches independent PR validation. |
 | AppSec manual remediation | Dispatch from the default branch with the issue's finding ID. Tries a bounded set of same-major fixes. Creates or reuses a draft only after verification passes. |
 | AppSec remediation validation | Runs on eligible PR events or by dispatch with the PR number. Requires a same-repository AppSec branch and tests the candidate manifests against trusted base code. |
 

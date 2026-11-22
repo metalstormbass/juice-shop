@@ -162,6 +162,16 @@ def workflow_summary(kind, data, selected=None):
             lines.append(f"| {text(f['package'])}@{text(f['installed_version'])} | {advisory_links(f['advisory_ids'])} | "
                          f"{', '.join(map(text, f['fix_versions'])) or 'None recorded'} |")
         return "\n".join(lines)
+    if data.get("remediations") is not None:
+        lines = ["# Dependency remediation", "", "| Dependency | Result | Draft PR |", "|---|---|---|"]
+        for item in data["remediations"]:
+            attempts = item.get("attempts", [])
+            outcome = (item.get("escalation") or item.get("status") or item.get("error")
+                       or (attempts[-1]["validation"]["result"] if attempts else "no change"))
+            pull = f"#{int(item['pull']['number'])}" if item.get("pull") else "None"
+            lines.append(f"| {text(item.get('package', ''))}@{text(item.get('installed_version', ''))} | "
+                         f"{text(outcome)} | {pull} |")
+        return "\n".join(lines)
     lines = ["# Dependency remediation", "", f"Selected finding: {text(selected or data.get('finding_id', 'unknown'))}", ""]
     if data.get("status"):
         lines.append(f"Current lifecycle state: **{text(data['status'])}**. No new attempt was started.")

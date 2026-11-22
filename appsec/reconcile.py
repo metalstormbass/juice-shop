@@ -11,7 +11,7 @@ def matching(finding, state):
             and bool(set(state.get("aliases", [])) & set(finding.advisory_ids)))
 
 
-def reconcile(root, inventory, findings, store, agents, github=None):
+def reconcile(root, inventory, findings, store, agents, github=None, write=True):
     scope = f"{inventory.repository.slug}:{inventory.repository.lockfile}"
     states = store.all("state:" + scope)
     remote = {}
@@ -20,7 +20,8 @@ def reconcile(root, inventory, findings, store, agents, github=None):
             if state.get("scope") == scope:
                 remote[state["id"]] = issue
                 states[state["id"]] = state
-        github.ensure_labels()
+        if write:
+            github.ensure_labels()
 
     def save(state, finding, refs=()):
         key = state["id"]
@@ -29,9 +30,11 @@ def reconcile(root, inventory, findings, store, agents, github=None):
             event = Transition(finding_id=key, before=before, after=state["status"], reason=state["reason"])
             store.event("transition", key, event)
         store.put("state:" + scope, key, state)
-        if github:
+        if github and write:
             issue = github.sync(remote.get(key), issue_payload(finding, state, refs=refs))
             store.put("issue", key, issue["number"])
+        elif github and key in remote:
+            store.put("issue", key, remote[key]["number"])
         states[key] = state
 
     seen = set()
@@ -84,6 +87,10 @@ def reconcile(root, inventory, findings, store, agents, github=None):
                 status, reason = "needs-human-review", "Remediation PR closed and OSV still reports the finding"
         elif old.get("status") == "needs-human-review" and old.get("fingerprint") == fingerprint:
             status, reason = old["status"], old["reason"]
+        elif not write:
+            # Read-only passes reuse the recorded decision and never spend agent calls on triage.
+            status, reason = old.get("status", status), old.get("reason", reason)
+            display = old.get("display", display)
         else:
             if not display.get("assessment"):
                 assessment = agents.run("triage", finding, references, **context)
@@ -116,6 +123,8 @@ def reconcile(root, inventory, findings, store, agents, github=None):
         save(state, finding, refs)
         output.append(finding)
 
+    if not write:
+        return output
     for key, old in list(states.items()):
         labels = {label["name"] for label in remote.get(key, {}).get("labels", [])}
         if key in seen or old.get("status") == "fixed" or "risk-accepted" in labels:

@@ -11,12 +11,30 @@ class Config(Record):
     repository: str = "local/repository"
     lockfile: str = "package-lock.json"
     model: str = "gpt-4.1-mini"
-    agent_calls: int = Field(default=8, ge=0, le=30)
+    agent_calls: int = Field(default=8, ge=0, le=60)
     remediation_attempts: int = Field(default=2, ge=1, le=4)
     input_cost_per_million: float = Field(default=0.4, ge=0)
     output_cost_per_million: float = Field(default=1.6, ge=0)
     # Enable tests only for a trusted checkout and a reviewed npm test script.
     run_npm_tests: bool = False
+    # Packages whose reviewed install scripts run after `npm ci --ignore-scripts` (for native binaries).
+    rebuild_packages: list[str] = []
+    # npm argument lists run in order with the container network disabled.
+    test_commands: list[list[str]] = [["test", "--ignore-scripts"]]
+
+    @field_validator("rebuild_packages")
+    @classmethod
+    def package_names(cls, value):
+        if not all(re.fullmatch(r"(@[a-z0-9._-]+/)?[a-z0-9._-]+", name) for name in value):
+            raise ValueError("Expected npm package names")
+        return value
+
+    @field_validator("test_commands")
+    @classmethod
+    def npm_commands(cls, value):
+        if not value or not all(command and command[0] in ("test", "run", "exec") for command in value):
+            raise ValueError("Expected npm test, run or exec argument lists")
+        return value
 
     @field_validator("lockfile")
     @classmethod

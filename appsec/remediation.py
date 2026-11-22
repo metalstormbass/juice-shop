@@ -66,7 +66,7 @@ def approved_graph(inventory):
     return all(dep.registry.source == "public-npm" for dep in inventory.dependencies)
 
 
-def validate_fix(directory, repository, before, finding, scanner, run, tests_enabled):
+def validate_fix(directory, repository, before, finding, scanner, run, config):
     inventory = collect(directory / repository.lockfile, repository)
     if not approved_graph(inventory):
         return Validation(result="fail", checks=["Updated graph contains an unsupported dependency source"])
@@ -85,15 +85,23 @@ def validate_fix(directory, repository, before, finding, scanner, run, tests_ena
     if {item.finding_id for item in after} - {item.finding_id for item in before}:
         return Validation(result="fail", checks=["OSV reports new findings in the updated graph"])
     checks = ["Original version absent", "Original advisory absent and no new OSV findings"]
-    if not tests_enabled:
+    if not config.run_npm_tests:
         return Validation(result="inconclusive", checks=[*checks, "Reviewed npm test execution is disabled"])
     manifest_dir = (directory / repository.lockfile).parent
     ok, message = run(manifest_dir, ["ci", "--package-lock=true", "--ignore-scripts", "--no-audit", "--no-fund",
                                       "--registry=https://registry.npmjs.org"], network=True)
     checks.append(message)
-    if ok:
-        ok, message = run(manifest_dir, ["test", "--ignore-scripts"])
+    for package in config.rebuild_packages if ok else []:
+        ok, message = run(manifest_dir, ["rebuild", package, "--no-audit", "--no-fund",
+                                          "--registry=https://registry.npmjs.org"], network=True)
         checks.append(message)
+        if not ok:
+            break
+    for command in config.test_commands if ok else []:
+        ok, message = run(manifest_dir, command)
+        checks.append(message)
+        if not ok:
+            break
     return Validation(result="pass" if ok else "fail", checks=checks)
 
 
@@ -151,7 +159,7 @@ def remediate(root, repository, inventory, findings, finding, config, scanner, r
             ok, message = run(scoped, ["install", "--package-lock=true", "--package-lock-only", "--ignore-scripts", "--no-audit",
                                        "--no-fund", "--registry=https://registry.npmjs.org"], network=True)
             if ok:
-                validation = validate_fix(directory, repository, findings, finding, scanner, run, config.run_npm_tests)
+                validation = validate_fix(directory, repository, findings, finding, scanner, run, config)
                 validation = Validation(result=validation.result, checks=[message, *validation.checks])
             else:
                 validation = Validation(result="fail", checks=[message])

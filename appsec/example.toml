@@ -2,8 +2,12 @@
 repository = "local/repository"
 lockfile = "package-lock.json"
 model = "gpt-4.1-mini"
-agent_calls = 8
-remediation_attempts = 2
+agent_calls = 30
+remediation_attempts = 3
 input_cost_per_million = 0.4
 output_cost_per_million = 1.6
-run_npm_tests = false
+run_npm_tests = true
+# sqlite3 needs its native binary, which --ignore-scripts skips during npm ci.
+rebuild_packages = ["sqlite3"]
+# The server unit suite and a type check run offline after installation.
+test_commands = [["run", "test:server"], ["exec", "--", "tsc", "--noEmit"]]

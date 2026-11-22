@@ -51,6 +51,8 @@ def main():
     parser.add_argument("--base-ref")
     parser.add_argument("--ref")
     parser.add_argument("--finding-id")
+    parser.add_argument("--all", action="store_true", dest="all_findings",
+                        help="Remediate every current finding with its own draft PR")
     parser.add_argument("--apply", action="store_true", help="Allow GitHub writes on the verified default revision")
     parser.add_argument("--dry-run", action="store_false", dest="apply")
     parser.set_defaults(apply=False)
@@ -126,13 +128,23 @@ def execute(args, scanner=None, github=None, agent_send=None):
         return 0
     agents = Agents(store, config, os.environ.get("OPENAI_API_KEY"),
                     **({"send": agent_send} if agent_send else {}))
-    findings = reconcile(root, inventory, findings, store, agents, github)
+    findings = reconcile(root, inventory, findings, store, agents, github, write=args.command != "remediate")
     states = store.all("state:" + scope)
     summary["states"] = {key: state["status"] for key, state in states.items()}
-    if args.command in ("triage", "hunt", "validate", "remediate") and args.finding_id:
-        finding = next((item for item in findings if item.finding_id == args.finding_id), None)
-        if finding is None:
-            raise ValueError("Finding is absent from the current scan")
+    summary["queue"] = [{"finding_id": item.finding_id, "package": item.package,
+                         "installed_version": item.installed_version, "fixable": bool(candidates(item))}
+                        for item in findings]
+    every = args.command == "remediate" and getattr(args, "all_findings", False)
+    if args.command in ("triage", "hunt", "validate", "remediate") and (args.finding_id or every):
+        if args.command == "remediate" and args.ref is None and read_inventory(
+                root, repo, sha).dependencies != inventory.dependencies:
+            raise ValueError("Remediation requires a committed lockfile matching the working tree")
+        selected = findings
+        if not every:
+            selected = [item for item in findings if item.finding_id == args.finding_id]
+            if not selected:
+                raise ValueError("Finding is absent from the current scan")
+        finding = selected[0]
         state = states[finding.finding_id]
         refs = evidence(root, finding.package)
         assessment = state["display"].get("assessment")
@@ -145,51 +157,72 @@ def execute(args, scanner=None, github=None, agent_send=None):
             store.put("validation", finding.finding_id, result)
             summary["validation"] = result
         if args.command == "remediate":
-            if state["status"] in ("remediation-in-progress", "risk-accepted") or state.get("attempted_revision") == sha:
-                emit({"finding_id": finding.finding_id, "status": state["status"]})
-                return 0
-            if args.ref is None and read_inventory(root, repo, sha).dependencies != inventory.dependencies:
-                raise ValueError("Remediation requires a committed lockfile matching the working tree")
-            advice = agents.run("remediation", finding, refs, assessment=assessment,
-                                candidates=candidates(finding))
-            if not candidates(finding) or (advice and advice.recommendation != "upgrade"):
-                summary["escalation"] = "No approved compatible upgrade candidate"
+            def remediate_finding(finding):
+                state = store.all("state:" + scope)[finding.finding_id]
+                refs = evidence(root, finding.package)
+                assessment = state["display"].get("assessment")
+                result = {"finding_id": finding.finding_id, "package": finding.package,
+                          "installed_version": finding.installed_version}
+                if state["status"] in ("remediation-in-progress", "risk-accepted") or state.get("attempted_revision") == sha:
+                    return {**result, "status": state["status"], "skipped": True}
+                issue_number = store.get("issue", finding.finding_id)
+                if github and issue_number is None:
+                    raise ValueError("Run reconciliation before remediation so the finding has an issue")
+                advice = agents.run("remediation", finding, refs, assessment=assessment,
+                                    candidates=candidates(finding))
                 files = {}
                 attempts = []
-            else:
-                proposal = agents.run("test-development", finding, refs, assessment=assessment)
-                if proposal:
-                    summary["test_proposal"] = proposal.model_dump()
-                attempts, files = remediate(root, repo, inventory, findings, finding, config, scanner)
-                summary["attempts"] = [item.model_dump() for item in attempts]
-                store.put("attempts", finding.finding_id, summary["attempts"])
-                if not files:
-                    summary["escalation"] = "No candidate passed independent verification"
-            if not files and github:
-                issue = github.call("GET", f"/issues/{store.get('issue', finding.finding_id)}")
-                state = {**state, "status": "needs-human-review", "reason": summary["escalation"],
-                         "attempted_revision": sha,
-                         "display": {**state["display"], "remediation_attempts": summary.get("attempts", [])}}
-                github.sync(issue, issue_payload(finding, state))
-                store.put("state:" + scope, finding.finding_id, state)
-            if files:
-                story = agents.run("pr", finding, refs, assessment=assessment,
-                                   validation=attempts[-1].model_dump())
-                narrative = story.model_dump() if story else {"exposure": assessment, "residual_risks": "Human review required"}
-                summary["draft"] = {"files": sorted(files), "validation": attempts[-1].model_dump(),
-                                    "narrative": narrative}
-                if github:
-                    issue_number = store.get("issue", finding.finding_id)
+                if not candidates(finding) or (advice and advice.recommendation != "upgrade"):
+                    result["escalation"] = "No approved compatible upgrade candidate"
+                else:
+                    proposal = agents.run("test-development", finding, refs, assessment=assessment)
+                    if proposal:
+                        result["test_proposal"] = proposal.model_dump()
+                    attempts, files = remediate(root, repo, inventory, findings, finding, config, scanner)
+                    result["attempts"] = [item.model_dump() for item in attempts]
+                    store.put("attempts", finding.finding_id, result["attempts"])
+                    if not files:
+                        result["escalation"] = "No candidate passed independent verification"
+                if not files and github:
                     issue = github.call("GET", f"/issues/{issue_number}")
-                    pull = github.draft(repo, issue, finding, files, attempts[-1], narrative)
-                    store.put("pull", finding.finding_id, pull)
-                    state = {**state, "status": "remediation-in-progress", "pull": pull.number,
-                             "reason": "Draft remediation PR exists"}
+                    state = {**state, "status": "needs-human-review", "reason": result["escalation"],
+                             "attempted_revision": sha,
+                             "display": {**state["display"], "remediation_attempts": result.get("attempts", [])}}
+                    github.sync(issue, issue_payload(finding, state))
                     store.put("state:" + scope, finding.finding_id, state)
-                    github.sync(issue, issue_payload(finding, state, validation=attempts[-1].model_dump()))
-                    summary["pull"] = pull.model_dump()
+                if files:
+                    story = agents.run("pr", finding, refs, assessment=assessment,
+                                       validation=attempts[-1].model_dump())
+                    narrative = story.model_dump() if story else {"exposure": assessment, "residual_risks": "Human review required"}
+                    result["draft"] = {"files": sorted(files), "validation": attempts[-1].model_dump(),
+                                       "narrative": narrative}
+                    if github:
+                        issue = github.call("GET", f"/issues/{issue_number}")
+                        pull = github.draft(repo, issue, finding, files, attempts[-1], narrative)
+                        store.put("pull", finding.finding_id, pull)
+                        state = {**state, "status": "remediation-in-progress", "pull": pull.number,
+                                 "reason": "Draft remediation PR exists"}
+                        store.put("state:" + scope, finding.finding_id, state)
+                        github.sync(issue, issue_payload(finding, state, validation=attempts[-1].model_dump()))
+                        result["pull"] = pull.model_dump()
+                return result
+
+            if not every:
+                result = remediate_finding(finding)
+                if result.get("skipped"):
+                    emit({"finding_id": finding.finding_id, "status": result["status"]})
+                    return 0
+                summary.update(result)
+            else:
+                summary["remediations"] = []
+                for finding in selected:
+                    try:
+                        summary["remediations"].append(remediate_finding(finding))
+                    except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as error:
+                        summary["remediations"].append({"finding_id": finding.finding_id, "package": finding.package,
+                                                        "error": type(error).__name__})
     elif args.command == "remediate":
-        raise ValueError("Remediation requires --finding-id")
+        raise ValueError("Remediation requires --finding-id or --all")
     summary["states"] = {key: state["status"] for key, state in store.all("state:" + scope).items()}
     summary["openai_calls"] = config.agent_calls - agents.remaining
     summary["metrics"] = store.agent_metrics()

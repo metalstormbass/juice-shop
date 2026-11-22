@@ -56,7 +56,7 @@ def verify(pr, config, root, scanner, run):
         (root_copy / manifest).write_bytes(candidate)
         (root_copy / lock).write_bytes(subprocess.check_output(
             ["git", "show", f"{sha}:{lock}"], cwd=root, timeout=30))
-        return validate_fix(root_copy, repository, findings, finding, scanner, run, config.run_npm_tests)
+        return validate_fix(root_copy, repository, findings, finding, scanner, run, config)
 
 
 def main():
