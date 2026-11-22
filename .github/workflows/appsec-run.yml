@@ -1,0 +1,37 @@
+name: AppSec reconciliation dry run
+on:
+  push:
+    branches: [appsec/github-run-20261122-200558]
+    paths:
+      - '.github/workflows/appsec-run.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    if: github.actor == 'metalstormbass'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          python3 -m venv "$RUNNER_TEMP/appsec-env"
+          "$RUNNER_TEMP/appsec-env/bin/pip" install ./appsec
+      - name: Run inventory, OSV scanning, and OpenAI reconciliation
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          test -n "$OPENAI_API_KEY"
+          "$RUNNER_TEMP/appsec-env/bin/appsec" reconcile --dry-run --ref HEAD \
+            --config appsec/example.toml --inventory-out inventory.json > summary.json
+          jq '{dependencies, findings: (.findings|length), openai_calls, metrics}' summary.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: appsec-reconciliation
+          path: |
+            inventory.json
+            summary.json
+            appsec.sqlite

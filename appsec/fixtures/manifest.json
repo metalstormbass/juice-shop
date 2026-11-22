@@ -1,0 +1,7 @@
+{
+  "name": "appsec-offline-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {"test": "node --test tests/compatibility.test.cjs"},
+  "dependencies": {"minimist": "1.2.5"}
+}
