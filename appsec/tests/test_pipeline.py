@@ -159,10 +159,13 @@ class PipelineTest(unittest.TestCase):
             observed = {"status": "supported" if call else "unknown",
                         "assessment": "Parser accepts command-line arguments" if call else "Runtime use unresolved",
                         "evidence_ids": [call] if call else []}
-            responses["triage"].update(prerequisites=observed, reachability=observed, input_exposure=observed,
+            origin = payload["context"]["input_origin_ids"]
+            inputs = {"status": "supported" if origin else "unknown", "assessment": "Review CLI argument source",
+                      "evidence_ids": origin}
+            responses["triage"].update(prerequisites=observed, reachability=observed, input_exposure=inputs,
                     controls_and_limits="Deployment-specific controls unverified", impact="Parsing integrity",
                     priority="normal", priority_reason="Installed version has a supported upgrade",
-                    missing_evidence=["Confirm deployment scope"], evidence_ids=observed["evidence_ids"])
+                    missing_evidence=["Confirm deployment scope"], evidence_ids=observed["evidence_ids"] + origin)
         if self.classification == "bad evidence":
             responses["triage"].update(classification="confirmed affected", evidence_ids=["invented"])
         return {"status": "completed", "usage": {"input_tokens": 35, "output_tokens": 10},
@@ -308,6 +311,19 @@ class PipelineTest(unittest.TestCase):
         self.classification = "confirmed affected"
         summary = self.command("reconcile")
         self.assertEqual(set(summary["states"].values()), {"needs-triage"})
+
+    def test_generic_argument_and_filename_do_not_establish_input_provenance(self):
+        from appsec.exposure import references
+        (self.root / "src/upload.cjs").write_text("const parse = require('minimist')\nparse(buffer)\n")
+        (self.root / "src/cli.cjs").unlink()
+        self.git("add", ".")
+        refs = references(self.root, "minimist")
+        self.assertIn("project call candidate", {r.kind for r in refs})
+        self.assertNotIn("input origin at call", {r.kind for r in refs})
+        self.git("commit", "-qm", "Opaque buffer origin")
+        self.remote.head = revision(self.root, "HEAD")
+        self.classification = "confirmed affected"
+        self.assertEqual(set(self.command("reconcile")["states"].values()), {"needs-triage"})
 
     def test_production_calls_build_context_and_advisory_conditions_are_distinct(self):
         from appsec.exposure import references, advisory_context

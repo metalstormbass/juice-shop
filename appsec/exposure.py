@@ -9,6 +9,7 @@ from .models import Evidence
 
 SECRET = re.compile(r"(?i)secret|token|password|credential|private.key|api.key|authorization|bearer|sk-[a-z0-9]")
 IDENT = r"[A-Za-z_$][\w$]*"
+INPUT_SOURCE = re.compile(r"\b(?:process\.argv|(?:req|request)\.(?:body|file|files|params|query|headers))\b")
 SOURCE = (".js", ".ts", ".mjs", ".cjs", ".tsx", ".jsx")
 ROOTS = ("lib/", "routes/", "models/", "src/", "test/", "tests/", "scripts/", "frontend/src/app/")
 
@@ -81,6 +82,8 @@ def references(root, package, *, limit=16, lockfile="package-lock.json", aliases
                 kind, rank = "text mention", 5
             else:
                 continue
+            if kind == "project call candidate" and INPUT_SOURCE.search(line):
+                rows.append((0, name, number, "input origin at call", line.strip()[:300]))
             rows.append((rank + (2 if scope != "project" and not build else 0), name, number, kind, line.strip()[:300]))
     selected = []
     by_kind = Counter()

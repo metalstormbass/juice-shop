@@ -64,10 +64,11 @@ def reconcile(root, inventory, findings, store, agents, github=None):
         fact_hash = digest(finding)
         refs = [item.model_dump() for item in references]
         context = {"dependency_scope": graph, "root_resolvable": resolvable,
+                   "input_origin_ids": [ref.id for ref in references if ref.kind == "input origin at call"],
                    "advisory_context": [{"id": record.id, "description": record.conditions_text,
                                          "summary": record.summary, "source": record.provenance}
                                         for record in finding.advisories[:4]]}
-        fingerprint = digest(["risk-triage-v2", fact_hash, refs, context])
+        fingerprint = digest(["risk-triage-v3", fact_hash, refs, context])
         labels = {label["name"] for label in remote.get(identity, {}).get("labels", [])}
         accepted = "risk-accepted" in labels
         display = old.get("display", {}) if old.get("fingerprint") == fingerprint else {}

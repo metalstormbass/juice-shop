@@ -21,7 +21,7 @@ jobs:
       - run: |
           python3 -m venv "$RUNNER_TEMP/appsec-env"
           "$RUNNER_TEMP/appsec-env/bin/pip" install ./appsec
-      - name: Assess advisory prerequisites, dependency use, and local risk
+      - name: Assess advisory prerequisites, input provenance, and local risk
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
