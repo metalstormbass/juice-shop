@@ -50,7 +50,16 @@ def run_npm(directory, args, *, network=False):
             return False, f"npm {args[0]} unavailable"
         log.seek(0)
         checksum = hashlib.file_digest(log, "sha256").hexdigest()
-        return completed.returncode == 0, f"npm {args[0]} exit {completed.returncode}, output SHA-256 {checksum}"
+        log.seek(0, 2)
+        size = log.tell()
+        log.seek(max(0, size - 6000))
+        output = log.read().decode(errors="replace")
+        from .exposure import SECRET
+        output = "\n".join(line for line in output.splitlines() if not SECRET.search(line))
+        command = "npm " + " ".join(args)
+        return completed.returncode == 0, (
+            f"{command} exited {completed.returncode}. Output SHA-256 {checksum}\n"
+            f"Final {min(size, 6000)} output bytes (sensitive lines omitted)\n{output}")
 
 
 def approved_graph(inventory):

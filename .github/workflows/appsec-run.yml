@@ -30,6 +30,30 @@ jobs:
             --config appsec/example.toml --inventory-out inventory.json > summary.json
       - name: Explain each stage and link source evidence
         run: "$RUNNER_TEMP/appsec-env/bin/python -m appsec.review --mode dry-run"
+      - name: Attempt one dependency update and test it
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          sed 's/run_npm_tests = false/run_npm_tests = true/' appsec/example.toml > "$RUNNER_TEMP/remediate.toml"
+          finding="$("$RUNNER_TEMP/appsec-env/bin/python" - <<'PYCODE'
+          import json
+          from appsec.models import Finding
+          from appsec.remediation import candidates
+          from appsec.store import SQLiteStore
+          store = SQLiteStore("appsec.sqlite")
+          for value in store.all("finding").values():
+              finding = Finding.model_validate(value)
+              if candidates(finding):
+                  print(finding.finding_id)
+                  break
+          PYCODE
+          )"
+          if [[ -n "$finding" ]]; then
+            "$RUNNER_TEMP/appsec-env/bin/appsec" remediate --dry-run --ref HEAD \
+              --db remediation.sqlite --config "$RUNNER_TEMP/remediate.toml" \
+              --finding-id "$finding" > remediation.json
+            "$RUNNER_TEMP/appsec-env/bin/python" -m appsec.github_report remediation remediation.json --finding-id "$finding"
+          fi
       - id: audit
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -38,6 +62,8 @@ jobs:
             inventory.json
             summary.json
             appsec.sqlite
+            remediation.json
+            remediation.sqlite
             review/
       - name: Link review artifact
         env:

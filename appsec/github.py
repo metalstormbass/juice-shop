@@ -143,11 +143,22 @@ class GitHub:
                 "tree": tree["sha"], "parents": [head],
                 "author": identity, "committer": identity})
             self.call("POST", "/git/refs", {"ref": "refs/heads/" + branch, "sha": commit["sha"]})
-        summary = {"affected": f"{finding.package}@{finding.installed_version}",
-                   "advisories": finding.advisory_ids, "upgrade": validation.version,
-                   "validation": validation.validation.model_dump(), "analysis": narrative}
-        body = f"Related issue #{issue['number']}. Human review required.\n\n" + protected(
-            json.dumps(summary, indent=2)[:40_000])
+        from .github_report import text, advisory_links
+        lines = [f"Related issue #{issue['number']}. Human review required.", "",
+                 f"Updates **{text(finding.package)}** from **{text(finding.installed_version)}** "
+                 f"to **{text(validation.version)}**.", "",
+                 advisory_links(finding.advisory_ids), "",
+                 "## Validation", "",
+                 f"Independent verification result: **{text(validation.validation.result)}**.", ""]
+        for check in validation.validation.checks:
+            lines.extend(["<details><summary>Verification evidence</summary>", "",
+                          protected(check), "", "</details>", ""])
+        lines.extend(["## Exposure and remaining uncertainty", ""])
+        for field, value in narrative.items():
+            lines.append(f"- **{text(field.replace('_', ' ').capitalize())}** — {text(value)}")
+        lines.extend(["", "Passing tests provide evidence for the exercised behavior. "
+                      "Deployment-specific behavior still requires review."])
+        body = "\n".join(lines)
         pull = self.call("POST", "/pulls", {"title": f"Upgrade {finding.package} to {validation.version}",
                          "body": body, "head": branch, "base": base, "draft": True})
         return PullRequest(number=pull["number"], url=pull["html_url"], branch=branch)

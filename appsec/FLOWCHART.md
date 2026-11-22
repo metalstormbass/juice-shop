@@ -1,5 +1,7 @@
 # Dependency AppSec workflow
 
+## Workflow
+
 ```text
 npm package-lock.json (v2 or v3)
   |
@@ -24,22 +26,31 @@ OSV scan of public npm packages
         +-- New or changed finding
         |     |
         |     v
-        |   Triage agent reviews advisory facts and source references
+        |   Prioritize findings with static evidence of application use
         |     |
-        |     +-- Assessment unavailable --> needs-triage
-        |     +-- Exposure uncertain ------> Hunt agent reviews source and tests
-        |     |                               |
-        |     |                               v
-        |     |                             Record evidence --> needs-validation
+        |     v
+        |   OpenAI triage reviews advisory and repository evidence
+        |     |-- Advisory prerequisites and affected behavior
+        |     |-- Installed dependency paths and parent packages
+        |     |-- Application imports and candidate calls
+        |     |-- Input provenance, deployment scope and observed controls
+        |     |-- Impact, local priority, citations and missing evidence
         |     |
-        |     +-- Assessed as affected, fix available --> remediation-ready
-        |     +-- Other assessed findings -------------> needs-human-review
+        |     +-- Deferred or rejected output --> needs-triage
+        |     +-- Uncertain exposure --> Hunt reviews source and tests
+        |     |                            |
+        |     |                            v
+        |     |                  Record evidence --> needs-validation
+        |     +-- Confirmed exposure with an OSV fix --> remediation-ready
+        |     +-- Other assessed findings ------------> needs-human-review
         |
         +-- Existing remediation PR --> Track open or closed state
         +-- Affected version removed --> Mark fixed after a complete rescan
         |
         v
-      Create or update the same GitHub Issue
+      Publish a readable GitHub Actions summary with expandable findings
+        |-- Dry run --> Report and evidence artifact
+        |-- Apply --> Create or update the same GitHub Issue
         |
         v
 Maintainer requests remediation by finding ID
@@ -73,6 +84,29 @@ Independent fix validation
                                         Next reconciliation rescans
                                         and updates the original issue
 ```
+
+## Verified GitHub status
+
+The risk-triage dry run completed on the AppSec branch. It inventoried 1,248
+dependency paths and reported 54 findings. Eight OpenAI calls produced three
+accepted triage assessments and three follow-up investigations. Two triage
+outputs were rejected for invalid citations.
+
+- **51 need triage**
+- **3 need validation**
+- **0 were marked ready for remediation**
+
+The dry run ended at reporting. Issue synchronization, dependency edits,
+fix validation, and draft PR creation require their respective apply or
+remediation workflows.
+
+[GitHub Actions run](https://github.com/metalstormbass/juice-shop/actions/runs/45070764850) · [Risk decisions and source citations](https://github.com/metalstormbass/juice-shop/blob/5d045132dbc88ca09e105c58719c06a6dd198b80/appsec/reports/run-45070764850.md#risk-decisions)
+
+## Evidence limits
+
+Confirmation requires cited advisory prerequisites, a candidate application call,
+and evidence of input provenance. Static excerpts can leave runtime behavior
+and deployment conditions unresolved.
 
 Exposure validation records source and test evidence and can return `unable to validate`.
 Test development proposes compatibility checks for human review. After an upgrade,
