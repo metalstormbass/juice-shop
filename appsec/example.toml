@@ -11,7 +11,9 @@ run_npm_tests = true
 rebuild_packages = ["sqlite3"]
 # Build both application components and run the server suite offline.
 prepare_frontend = true
-test_commands = [["run", "build"], ["run", "test:server"]]
+# The Angular development configuration builds offline without fetching web fonts.
+test_commands = [["exec", "--prefix", "frontend", "--", "ng", "build", "--configuration", "development"],
+                 ["run", "build:server"], ["run", "test:server"]]
 require_advisory_test = true
 
 [security_behavior_tests]
