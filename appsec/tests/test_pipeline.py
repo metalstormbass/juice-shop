@@ -396,6 +396,15 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(self.commands, [("install", True), ("ci", True), ("rebuild", True),
                                          ("run", False), ("exec", False)])
 
+    def test_compatibility_tests_alone_cannot_satisfy_required_advisory_check(self):
+        self.config.write_text(self.config.read_text() + '\nrequire_advisory_test = true\n')
+        self.command("reconcile")
+        result = self.command("remediate", fresh=True, every=True)["remediations"][0]
+        verified = result["attempts"][-1]["validation"]
+        self.assertEqual(verified["result"], "inconclusive")
+        self.assertIn("No maintained runtime assertion covers the original advisory", verified["checks"])
+        self.assertIsNone(self.remote.pull)
+
     def test_failed_security_behavior_check_blocks_publication(self):
         self.config.write_text(self.config.read_text() + '\n[security_behavior_tests]\nminimist = [["run", "check-contract"]]\n')
         self.command("reconcile")

@@ -32,12 +32,12 @@ Regenerate lockfile → Compare graph and OSV findings
   │
   ├─ New advisories on target → Try an eligible OSV fix within the attempt limit
   ▼
-Clean install → Rebuild sqlite3 → Server unit tests → TypeScript check
+Clean install → Rebuild sqlite3 → Build frontend and server → Server unit tests
   │
   ▼
-Run maintained security behavior tests when configured for the dependency
+Run maintained runtime assertions mapped to the advisory
   │
-  ├─ Failed or inconclusive → Record outcome; escalate if no candidate passes
+  ├─ Failed build, failed assertion or missing advisory test → Record and escalate
   ▼
 [AGENT: test-review] interpret recorded test evidence
   │

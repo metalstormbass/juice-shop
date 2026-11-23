@@ -156,6 +156,7 @@ class AdvisoryComparison(Record):
 
 
 class SecurityBehaviorResult(Record):
+    advisory_id: str | None = None
     command: list[str]
     passed: bool
     evidence: str

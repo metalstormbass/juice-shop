@@ -23,6 +23,19 @@ class Config(Record):
     test_commands: list[list[str]] = [["test", "--ignore-scripts"]]
 
     # Maintainer-selected, existing tests of security behavior. Keys are npm package names.
+    prepare_frontend: bool = False
+    require_advisory_test: bool = False
+    advisory_behavior_tests: dict[str, list[list[str]]] = {}
+
+    @field_validator("advisory_behavior_tests")
+    @classmethod
+    def advisory_commands(cls, value):
+        for advisory, commands in value.items():
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]+", advisory):
+                raise ValueError("Expected an advisory identifier")
+            cls.npm_commands(commands)
+        return value
+
     security_behavior_tests: dict[str, list[list[str]]] = {}
 
     @field_validator("security_behavior_tests")

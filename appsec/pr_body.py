@@ -113,7 +113,8 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     if behavior:
         lines += ["**Maintained security behavior checks**", ""]
         for result in behavior:
-            lines += [f"- {'Pass' if result.passed else 'Fail'} — npm {text(' '.join(result.command))}"]
+            scope = text(result.advisory_id or "Application compatibility")
+            lines += [f"- **{scope}** — {'Pass' if result.passed else 'Fail'} · npm {text(' '.join(result.command))}"]
         lines.append("")
     else:
         lines += ["Focused security behavior tests were unavailable for this candidate.", ""]

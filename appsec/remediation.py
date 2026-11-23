@@ -120,18 +120,30 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
         checks.append(message)
         if not ok:
             break
+    if ok and config.prepare_frontend:
+        ok, message = run(manifest_dir, ["install", "--prefix", "frontend", "--ignore-scripts",
+                                          "--no-audit", "--no-fund", "--registry=https://registry.npmjs.org"],
+                          network=True)
+        checks.append(message)
     for command in config.test_commands if ok else []:
         ok, message = run(manifest_dir, command)
         checks.append(message)
         if not ok:
             break
     behavior = []
-    for command in config.security_behavior_tests.get(finding.package, []) if ok else []:
+    focused = [(None, command) for command in config.security_behavior_tests.get(finding.package, [])]
+    for advisory in finding.advisory_ids:
+        focused.extend((advisory, command) for command in config.advisory_behavior_tests.get(advisory, []))
+    for advisory, command in focused if ok else []:
         ok, message = run(manifest_dir, command)
-        behavior.append(SecurityBehaviorResult(command=command, passed=ok, evidence=message))
+        behavior.append(SecurityBehaviorResult(advisory_id=advisory, command=command, passed=ok, evidence=message))
         checks.append(message)
         if not ok:
             break
+    if ok and config.require_advisory_test and not any(result.advisory_id for result in behavior):
+        return Validation(result="inconclusive",
+                          checks=[*checks, "No maintained runtime assertion covers the original advisory"],
+                          advisory_comparison=comparison, security_behavior=behavior)
     return Validation(result="pass" if ok else "fail", checks=checks,
                       advisory_comparison=comparison, security_behavior=behavior)
 
