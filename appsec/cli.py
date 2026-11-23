@@ -279,6 +279,16 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     narrative = story.model_dump() if story else {"exposure": None, "residual_risks": "Human review required"}
                     result["draft"] = {"files": sorted(files), "validation": attempts[-1].model_dump(),
                                        "narrative": narrative}
+                    if not args.apply and (export_dir := os.environ.get("APPSEC_TESTED_FILES")):
+                        destination = Path(export_dir)
+                        destination.mkdir(parents=True, exist_ok=False)
+                        for name, content in files.items():
+                            (destination / name).write_text(content)
+                        result["draft"]["refs"] = [ref.model_dump() for ref in refs]
+                        result["draft"]["review_context"] = {
+                            "fix_validation": result["fix_validation"], "fix_inspection": result["fix_inspection"],
+                            "chains": chains(inventory, finding), "advice": result.get("remediation_advice"),
+                            "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
                     if github:
                         issue = github.call("GET", f"/issues/{issue_number}")
                         extra = {"fix_validation": result["fix_validation"], "fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,

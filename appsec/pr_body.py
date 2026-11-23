@@ -117,8 +117,16 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
         lines.append("")
     else:
         lines += ["Focused security behavior tests were unavailable for this candidate.", ""]
+    if evidence := attempt.validation.advisory_comparison:
+        lines += ["**Before and after advisory evidence**", "", "| Evidence | Result |", "| --- | --- |",
+                  f"| Affected versions before | {', '.join(map(text, evidence.before_versions))} |",
+                  f"| Installed versions after | {', '.join(map(text, evidence.after_versions))} |",
+                  f"| Original advisories | {advisory_links(evidence.original_advisories)} |",
+                  f"| Original advisories still reported | {advisory_links(evidence.original_advisories_remaining) or 'None'} |",
+                  f"| Other advisories still reported for this package | {advisory_links(evidence.remaining_advisories) or 'None'} |",
+                  f"| New advisories reported by OSV | {advisory_links(evidence.new_advisories) or 'None'} |", ""]
     if verdict := extra.get("fix_validation"):
-        lines += ["**Fix validation agent**", "", text(verdict["rationale"]), "",
+        lines += [f"**Fix validation agent verdict · {text(verdict['verdict'])}**", "", text(verdict["rationale"]), "",
                   f"Limits: {text(verdict['remaining_uncertainty'])}", ""]
     if review:
         lines += ["**AI test review**", "", text(review.get("summary", "")), "",
@@ -135,4 +143,6 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     lines += ["<details><summary>Raw command output</summary>", ""]
     lines += [protected(check) + "\n" for check in attempt.validation.checks]
     lines += ["</details>"]
+    if run_url := extra.get("run_url"):
+        lines += ["", f"[Workflow run and downloadable audit evidence]({run_url})"]
     return "\n".join(lines)
