@@ -259,6 +259,13 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     github.sync(issue, issue_payload(finding, state))
                     store.put("state:" + scope, finding.finding_id, state)
                 if files:
+                    if not args.apply and (export_dir := os.environ.get("APPSEC_TESTED_FILES")):
+                        destination = Path(export_dir)
+                        destination.mkdir(parents=True, exist_ok=False)
+                        for name, content in files.items():
+                            target = destination / name
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_text(content)
                     story = agents.run("pr", finding, refs, assessment=assessment, advice=advice.model_dump() if advice else None,
                                        version=attempts[-1].version, attempts=history, checks=digest)
                     narrative = story.model_dump() if story else {"exposure": None, "residual_risks": "Human review required"}
