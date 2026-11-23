@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .inventory import EXACT, PACKAGE, collect, requirements
-from .models import Attempt, Validation
+from .models import AdvisoryComparison, Attempt, Validation
 
 def version_key(version):
     return tuple(map(int, version.split(".")))
@@ -84,23 +84,32 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
     except (RuntimeError, ValueError, KeyError):
         return Validation(result="inconclusive", checks=["Updated graph could not be scanned completely"])
     aliases = set(finding.advisory_ids)
-    if any(item.package == finding.package and aliases.intersection(item.advisory_ids) for item in after):
-        return Validation(result="fail", checks=["OSV still reports the original advisory"])
     known = {}
     for item in before:
         known.setdefault(item.package, set()).update(item.advisory_ids)
     # Advisories that already affected the package may remain until a later fix; only new ones are regressions.
     fresh = [item for item in after if not known.get(item.package, set()).intersection(item.advisory_ids)]
+    remaining = {a for item in after if item.package == finding.package for a in item.advisory_ids}
+    comparison = AdvisoryComparison(
+        original_advisories=sorted(aliases), before_versions=sorted({item.installed_version for item in before
+            if item.package == finding.package} | {finding.installed_version}),
+        after_versions=sorted({dep.version for dep in inventory.dependencies if dep.name == finding.package}),
+        remaining_advisories=sorted(remaining), original_advisories_remaining=sorted(aliases & remaining),
+        new_advisories=sorted({a for item in fresh for a in item.advisory_ids}))
+    if comparison.original_advisories_remaining:
+        return Validation(result="fail", checks=["OSV still reports the original advisory"],
+                          advisory_comparison=comparison)
     if fresh:
         retry = sorted({version for item in fresh if item.package == finding.package
                         for version in item.fix_versions if acceptable(finding.installed_version, version)},
                        key=version_key)
-        return Validation(result="fail", retry_versions=retry[-1:],
+        return Validation(result="fail", retry_versions=retry[-1:], advisory_comparison=comparison,
                           checks=["OSV reports new advisories in the updated graph: "
                                   + ", ".join(sorted({a for item in fresh for a in item.advisory_ids}))])
     checks = ["Original version absent", "Original advisory absent and no new OSV advisories"]
     if not config.run_npm_tests:
-        return Validation(result="inconclusive", checks=[*checks, "Reviewed npm test execution is disabled"])
+        return Validation(result="inconclusive", checks=[*checks, "Reviewed npm test execution is disabled"],
+                          advisory_comparison=comparison)
     manifest_dir = (directory / repository.lockfile).parent
     ok, message = run(manifest_dir, ["ci", "--package-lock=true", "--ignore-scripts", "--no-audit", "--no-fund",
                                       "--registry=https://registry.npmjs.org"], network=True)
@@ -116,7 +125,7 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
         checks.append(message)
         if not ok:
             break
-    return Validation(result="pass" if ok else "fail", checks=checks)
+    return Validation(result="pass" if ok else "fail", checks=checks, advisory_comparison=comparison)
 
 
 def revised_manifest(manifest, finding, target):
@@ -180,8 +189,7 @@ def remediate(root, repository, inventory, findings, finding, config, scanner, r
                                        "--no-fund", "--registry=https://registry.npmjs.org"], network=True)
             if ok:
                 validation = validate_fix(directory, repository, findings, finding, scanner, run, config)
-                validation = Validation(result=validation.result, checks=[message, *validation.checks],
-                                        retry_versions=validation.retry_versions)
+                validation = validation.model_copy(update={"checks": [message, *validation.checks]})
             else:
                 validation = Validation(result="fail", checks=[message])
             attempts.append(Attempt(version=version, validation=validation))

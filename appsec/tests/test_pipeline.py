@@ -155,6 +155,8 @@ class PipelineTest(unittest.TestCase):
             "pr": {"exposure": "Parser used by the fixture", "rationale": "Upgrade passed compatibility tests",
                    "residual_risks": "Human review of application exposure", "evidence_ids": ["E1"]},
         }
+        responses["fix_validation"] = {"verdict": "resolved", "rationale": "Original advisory absent",
+                                       "remaining_uncertainty": "OSV coverage", "evidence_ids": []}
         responses["fix_inspection"] = responses["remediation"]
         if role == "triage":
             payload = json.loads(data["input"])
@@ -386,6 +388,27 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["remediations"][0]["pull"]["number"], 2)
         self.assertEqual(self.commands, [("install", True), ("ci", True), ("rebuild", True),
                                          ("run", False), ("exec", False)])
+
+    def test_unresolved_fix_agent_blocks_passing_candidate(self):
+        self.command("reconcile")
+        provider = self.openai
+
+        def unresolved(method, url, data, headers, **kwargs):
+            response = provider(method, url, data, headers, **kwargs)
+            if data["text"]["format"]["name"] == "fix_validation":
+                context = json.loads(data["input"])["context"]
+                self.assertEqual(context["comparison"]["after_versions"], ["1.2.6"])
+                self.assertEqual(context["comparison"]["original_advisories_remaining"], [])
+                block = response["output"][0]["content"][0]
+                verdict = json.loads(block["text"])
+                block["text"] = json.dumps({**verdict, "verdict": "inconclusive"})
+            return response
+
+        self.openai = unresolved
+        result = self.command("remediate", fresh=True, every=True)["remediations"][0]
+        self.assertEqual(result["attempts"][-1]["validation"]["result"], "pass")
+        self.assertEqual(result["fix_validation"]["verdict"], "inconclusive")
+        self.assertIsNone(self.remote.pull)
 
     def test_missing_final_inspection_blocks_passing_upgrade(self):
         self.command("reconcile")

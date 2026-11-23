@@ -1,6 +1,6 @@
 from .exposure import SECRET, references as evidence
 
-from .models import (AgentExecution, Assessment, Investigation,
+from .models import (AgentExecution, Assessment, FixValidationReview, Investigation,
                      Narrative, RemediationAdvice, TestProposal, TestReview)
 from .store import digest, encoded
 from .transport import RequestFailed, request
@@ -26,6 +26,12 @@ ROLES = {
              "Do not propose reproduction steps, payloads or probes."),
     "test-development": (TestProposal, "Describe a benign compatibility behavior that existing or "
                          "human-authored tests should protect. Do not generate code, inputs or reproduction steps."),
+    "fix-validation": (FixValidationReview,
+                       "Review the installed version change and before/after OSV advisory evidence. "
+                       "Decide whether the original advisory is resolved for this tested dependency graph. "
+                       "Separate remaining advisories from the original advisory and state verification limits. "
+                       "Use inconclusive for missing evidence. Compatibility tests do not demonstrate security "
+                       "behavior. Do not propose exploitation, reproduction, probes or payloads."),
     "fix-inspection": (RemediationAdvice, "Inspect the exact tested dependency change, dependency chain, "
                        "changed lockfile paths, advisory facts and check results. Explain why this version addresses "
                        "the finding, remaining compatibility risks and test coverage gaps. Escalate if the evidence "

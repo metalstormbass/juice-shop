@@ -39,6 +39,10 @@ Clean install → Rebuild sqlite3 → Server unit tests → TypeScript check
 [AGENT: test-review] interpret recorded test evidence
   │
   ▼
+[AGENT: fix-validation] review before/after OSV evidence for the original advisory
+  │
+  ├─ Unresolved, inconclusive or unavailable → Human review
+  ▼
 [AGENT: fix-inspection] review the exact tested version, manifest entry, lockfile
 changes, dependency chain, attempt history and verification checks
   │
@@ -64,6 +68,7 @@ Each AGENT label marks an OpenAI role. Execution records distinguish live calls 
 | Issue and queue | Match the finding ID on the issue with the remediation artifact name and the queue in `summary.json`. [Example issue](https://github.com/metalstormbass/juice-shop/issues/181) |
 | Candidate selection | Compare the original version, versions tried, advisory outcomes and final manifest diff. [Example PR files](https://github.com/metalstormbass/juice-shop/pull/203/files) |
 | Compatibility | Read the command outcomes and raw output in the PR. For the tested `moment` update, 441 server tests passed, zero failed and two were skipped. TypeScript compilation passed. Frontend and API suites are outside the configured checks. [Test results](https://github.com/metalstormbass/juice-shop/pull/203) |
+| Advisory resolution | The remediation job summary shows installed versions, the original advisory IDs, any that remain, newly reported advisories, and the fix validation agent’s verdict and limits. |
 | Fix inspection | The inspector receives the final manifest entry, changed lockfile paths and versions, a digest of both files, and the verified attempt history. Its recommendation and compatibility risks appear under “Why this fix.” Unavailable inspection blocks publication. |
 | Independent verification | The matrix dispatches another workflow for a newly opened PR. Check its conclusion separately from the reconciliation job. [Successful independent run](https://github.com/metalstormbass/juice-shop/actions/runs/45077897093) |
 

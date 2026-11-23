@@ -162,34 +162,96 @@ def workflow_summary(kind, data, selected=None):
             lines.append(f"| {text(f['package'])}@{text(f['installed_version'])} | {advisory_links(f['advisory_ids'])} | "
                          f"{', '.join(map(text, f['fix_versions'])) or 'None recorded'} |")
         return "\n".join(lines)
-    if data.get("remediations") is not None:
-        lines = ["# Dependency remediation", "", "| Dependency | Result | Draft PR |", "|---|---|---|"]
-        for item in data["remediations"]:
-            attempts = item.get("attempts", [])
-            outcome = (item.get("escalation") or item.get("status") or item.get("error")
-                       or (attempts[-1]["validation"]["result"] if attempts else "no change"))
-            pull = f"#{int(item['pull']['number'])}" if item.get("pull") else "None"
-            lines.append(f"| {text(item.get('package', ''))}@{text(item.get('installed_version', ''))} | "
-                         f"{text(outcome)} | {pull} |")
-        return "\n".join(lines)
-    lines = ["# Dependency remediation", "", f"Selected finding: {text(selected or data.get('finding_id', 'unknown'))}", ""]
-    if data.get("status"):
-        lines.append(f"Current lifecycle state: **{text(data['status'])}**. No new attempt was started.")
-    for f in data.get("findings", []):
-        if f["finding_id"] == selected:
-            lines += [f"**Original dependency** — {text(f['package'])}@{text(f['installed_version'])}. "
-                      f"{advisory_links(f['advisory_ids'])}", ""]
+    return remediation_summary(data, selected)
+
+
+def remediation_summary(data, selected=None):
+    from .pr_body import describe
+
+    if "remediations" in data:
+        return "\n\n".join(remediation_summary(item, item["finding_id"]) for item in data["remediations"])
+    selected = selected or data.get("finding_id")
+    finding = next((f for f in data.get("findings", []) if f["finding_id"] == selected), {})
+    package = data.get("package", finding.get("package", "Selected dependency"))
+    version = data.get("installed_version", finding.get("installed_version", "unknown"))
+    attempts = data.get("attempts", [])
+    pull = data.get("pull")
+    lines = [f"# Remediation review · {text(package)}@{text(version)}", "",
+             f"Finding ID `{text(selected or 'unavailable')}`.", "",
+             "## 1. Inventory and advisory match", ""]
+    if finding:
+        lines += [f"- **Original advisory** — {advisory_links(finding['advisory_ids'])}",
+                  f"- **Installed paths** — {', '.join(map(text, finding['dependency_paths']))}",
+                  f"- **OSV fix versions** — {', '.join(map(text, finding['fix_versions'])) or 'None'}", ""]
+    else:
+        lines += ["Finding details are available in the reconciliation run.", ""]
+    if data.get("skipped") or data.get("status") or data.get("error"):
+        lines += [f"**Disposition** — {text(data.get('status') or data.get('error') or 'Skipped')}.", ""]
+    lines += ["## 2. Exposure triage and candidate review", ""]
+    if triage := data.get("triage"):
+        lines += [f"- **Triage** — {text(triage['classification'])}. {text(triage['reasoning'])}"]
+    if advice := data.get("remediation_advice"):
+        lines += [f"- **Remediation agent** — {text(advice['recommendation'])}. {text(advice['reasoning'])}",
+                  f"- **Compatibility risks** — {text(advice['compatibility_risks'])}"]
+    else:
+        lines += ["- **Remediation agent** — No decision recorded."]
     if proposal := data.get("test_proposal"):
-        lines += [f"Proposed compatibility check: {text(proposal['behavior'])}. "
-                  f"Expected result: {text(proposal['expected_result'])}.", ""]
-    for attempt in data.get("attempts", []):
-        lines += [f"## Candidate {text(attempt['version'])}", "", *checks(attempt["validation"]), ""]
-    if draft := data.get("draft"):
-        lines += [f"Files changed: {', '.join(map(text, draft['files']))}.", ""]
-    if data.get("escalation"):
-        lines.append(f"**Human review needed** — {text(data['escalation'])}.")
-    if pull := data.get("pull"):
-        lines.append(f"Draft PR #{int(pull['number'])} is ready for human review.")
+        lines += [f"- **Test development agent** — {text(proposal['behavior'])}. "
+                  f"Expected result: {text(proposal['expected_result'])}."]
+    else:
+        lines += ["- **Test development agent** — No proposal recorded."]
+    lines += ["", "## 3. Upgrade, advisory rescan and compatibility checks", ""]
+    if not attempts:
+        lines += ["No candidate reached verification.", ""]
+    for attempt in attempts:
+        validation = attempt["validation"]
+        lines += [f"### {text(attempt['version'])} · {text(validation['result'])}", ""]
+        if comparison := validation.get("advisory_comparison"):
+            lines += ["| Evidence | Result |", "| --- | --- |",
+                      f"| Affected versions before → installed versions after | {', '.join(map(text, comparison['before_versions']))} "
+                      f"→ {', '.join(map(text, comparison['after_versions']))} |",
+                      f"| Original advisories | {advisory_links(comparison['original_advisories'])} |",
+                      f"| Original advisories still reported | {advisory_links(comparison['original_advisories_remaining']) or 'None'} |",
+                      f"| Advisories still reported for this dependency | {advisory_links(comparison['remaining_advisories']) or 'None'} |",
+                      f"| Newly reported advisories | {advisory_links(comparison['new_advisories']) or 'None'} |", ""]
+        lines += ["| Check | Result |", "| --- | --- |"]
+        for index, check in enumerate(validation["checks"]):
+            label, passed, detail = describe(check)
+            if index == len(validation["checks"]) - 1 and validation["result"] != "pass":
+                outcome = validation["result"].capitalize()
+            else:
+                outcome = "Pass" if passed else "Fail"
+            lines.append(f"| {text(label)} | {outcome} {text(detail)} |")
+        lines += [""] + details("Command output and recorded checks",
+                                [f"<pre>{html.escape(check)}</pre>" for check in validation["checks"]])
+    lines += ["## 4. Agent verification of the tested change", ""]
+    if validation := data.get("fix_validation"):
+        lines += [f"- **Advisory resolution · {text(validation['verdict'])}** — {text(validation['rationale'])}",
+                  f"- **Verification limits** — {text(validation['remaining_uncertainty'])}"]
+    else:
+        lines += ["- **Fix validation agent** — No verdict recorded."]
+    if review := data.get("test_review"):
+        lines += [f"- **Test review** — {text(review['summary'])}",
+                  f"- **Behavior covered** — {text(review['behavior_covered'])}",
+                  f"- **Coverage gaps** — {text(review['untested_behavior'])}"]
+    if inspection := data.get("fix_inspection"):
+        lines += [f"- **Final change inspection · {text(inspection['recommendation'])}** — "
+                  f"{text(inspection['reasoning'])}",
+                  f"- **Remaining compatibility risk** — {text(inspection['compatibility_risks'])}"]
+    lines += ["", "## 5. Publication", ""]
+    if escalation := data.get("escalation"):
+        lines += [f"**Human review needed** — {text(escalation)}."]
+    elif pull:
+        number = int(pull["number"])
+        url = pull["url"]
+        if re.fullmatch(r"https://github\.com/[\w.-]+/[\w.-]+/pull/\d+", url):
+            lines += [f"[Draft PR #{number}]({url}) is open for human review."]
+        else:
+            lines += [f"Draft PR {number} is open for human review."]
+    elif draft := data.get("draft"):
+        lines += ["Draft prepared for review. Files: " + ", ".join(map(text, draft["files"])) + "."]
+    else:
+        lines += ["No draft was published."]
     return "\n".join(lines)
 
 
