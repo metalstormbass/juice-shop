@@ -27,7 +27,7 @@ def acceptable(installed, version):
 
 
 def candidates(finding):
-    return sorted({version for version in finding.fix_versions if (finding.package, version) in {("crypto-js", "4.2.0"), ("@cyclonedx/cyclonedx-npm", "6.0.0")}
+    return sorted({version for version in finding.fix_versions if (finding.package, version) == ("crypto-js", "4.2.0")
                   or acceptable(finding.installed_version, version)},
                   key=version_key)
 
@@ -102,7 +102,7 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
                           advisory_comparison=comparison)
     if fresh:
         retry = sorted({version for item in fresh if item.package == finding.package
-                        for version in item.fix_versions if (finding.package, version) in {("crypto-js", "4.2.0"), ("@cyclonedx/cyclonedx-npm", "6.0.0")}
+                        for version in item.fix_versions if (finding.package, version) == ("crypto-js", "4.2.0")
                   or acceptable(finding.installed_version, version)},
                        key=version_key)
         return Validation(result="fail", retry_versions=retry[-1:], advisory_comparison=comparison,
@@ -122,15 +122,23 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
         checks.append(message)
         if not ok:
             break
+    if ok and config.prepare_frontend:
+        ok, message = run(manifest_dir, ["install", "--prefix", "frontend", "--ignore-scripts",
+                                          "--no-audit", "--no-fund", "--registry=https://registry.npmjs.org"],
+                          network=True)
+        checks.append(message)
     for command in config.test_commands if ok else []:
         ok, message = run(manifest_dir, command)
         checks.append(message)
         if not ok:
             break
     behavior = []
-    for command in config.security_behavior_tests.get(finding.package, []) if ok else []:
+    focused = [(None, command) for command in config.security_behavior_tests.get(finding.package, [])]
+    for advisory in finding.advisory_ids:
+        focused.extend((advisory, command) for command in config.advisory_behavior_tests.get(advisory, []))
+    for advisory, command in focused if ok else []:
         ok, message = run(manifest_dir, command)
-        behavior.append(SecurityBehaviorResult(command=command, passed=ok, evidence=message))
+        behavior.append(SecurityBehaviorResult(advisory_id=advisory, command=command, passed=ok, evidence=message))
         checks.append(message)
         if not ok:
             break

@@ -1,12 +1,10 @@
-name: AppSec refresh tested dependency PRs
+name: AppSec build and advisory behavior validation
 on:
   push:
     branches: [feature/appsec-refresh-reviewed]
     paths: ['.github/workflows/appsec-refresh-reviewed.yml']
 permissions:
-  contents: write
-  pull-requests: write
-  issues: read
+  contents: read
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -15,12 +13,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - package: moment
-            target: '2.19.3'
           - package: crypto-js
             target: '4.2.0'
-          - package: '@cyclonedx/cyclonedx-npm'
-            target: '6.0.0'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -48,7 +42,3 @@ jobs:
             summary.json
             tested-update/
             appsec.sqlite
-      - name: Publish workflow-verified draft PR
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python -m appsec.publish_tested_update

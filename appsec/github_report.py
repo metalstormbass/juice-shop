@@ -226,7 +226,8 @@ def remediation_summary(data, selected=None):
         if behavior:
             lines += ["", "**Maintained security behavior tests**", ""]
             for result in behavior:
-                lines += [f"- {'Pass' if result['passed'] else 'Fail'} — npm {text(' '.join(result['command']))}"]
+                scope = text(result.get("advisory_id") or "Application compatibility")
+                lines += [f"- **{scope}** — {'Pass' if result['passed'] else 'Fail'} · npm {text(' '.join(result['command']))}"]
         else:
             lines += ["", "No focused security behavior test ran for this candidate."]
         lines += [""] + details("Command output and recorded checks",
