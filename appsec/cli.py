@@ -33,6 +33,22 @@ def inspect_fix(agents, repo, inventory, finding, refs, files, attempts, checks,
         lock_changes=changes, change_digest=evidence_digest(files), checks=checks, attempts=history)
 
 
+def group_updates(queue):
+    open_packages = {item["package"] for item in queue if item["in_progress"]}
+    groups = {}
+    for item in queue:
+        if not item["eligible"] or item["package"] in open_packages:
+            continue
+        key = (item["package"], item["target_version"])
+        group = groups.setdefault(key, {**item, "related_findings": []})
+        group["related_findings"].append(item["finding_id"])
+    # Different proposed versions of one package also share the same manifest entry.
+    selected = {}
+    for group in groups.values():
+        selected.setdefault(group["package"], group)
+    return list(selected.values())
+
+
 def revision(root, ref):
     return subprocess.check_output(["git", "rev-parse", "--verify", "--end-of-options", ref + "^{commit}"],
                                    cwd=root, text=True, timeout=15).strip()
@@ -150,10 +166,13 @@ def execute(args, scanner=None, github=None, agent_send=None):
     summary["states"] = {key: state["status"] for key, state in states.items()}
     summary["queue"] = [{"finding_id": item.finding_id, "package": item.package,
                          "installed_version": item.installed_version, "fixable": bool(candidates(item)),
+                         "target_version": next(iter(candidates(item)), None),
+                         "in_progress": states[item.finding_id]["status"] == "remediation-in-progress",
                          "eligible": bool(candidates(item)) and states[item.finding_id]["status"] not in (
                              "remediation-in-progress", "risk-accepted")
                          and states[item.finding_id].get("attempted_revision") != sha}
                         for item in findings]
+    summary["updates"] = group_updates(summary["queue"])
     every = args.command == "remediate" and getattr(args, "all_findings", False)
     if args.command in ("triage", "hunt", "validate", "remediate") and (args.finding_id or every):
         if args.command == "remediate" and args.ref is None and read_inventory(

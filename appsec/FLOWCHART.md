@@ -11,14 +11,21 @@ Default-branch manifest change or manual reconciliation
 Inventory paths and versions → Query OSV → Group advisories into findings
   │
   ▼
-Triage application evidence → Hunt if exposure is uncertain → Sync finding issues
+[AGENT: triage] assess exposure → [AGENT: hunt] investigate uncertainty
   │
   ▼
-Queue same-major fix candidates within available slots (three open AppSec PRs)
+Sync finding issues
+  │
+  ▼
+Group by package and proposed version → Queue one update per package
+  │                                      (up to three open AppSec PRs)
   │
   ├─ Risk accepted, PR in progress, or already attempted at this revision → Skip
   ▼
-Remediation agent reviews compatibility → npm updates one target dependency
+[AGENT: remediation] review compatibility
+  │
+  ▼
+[AGENT: test-development] propose compatibility checks → npm updates dependency
   │
   ▼
 Regenerate lockfile → Compare graph and OSV findings
@@ -29,20 +36,23 @@ Clean install → Rebuild sqlite3 → Server unit tests → TypeScript check
   │
   ├─ Failed or inconclusive → Record outcome; escalate if no candidate passes
   ▼
-Test-review agent interprets available test evidence
+[AGENT: test-review] interpret recorded test evidence
   │
   ▼
-Fix inspector reviews the exact tested version, manifest entry, lockfile
+[AGENT: fix-inspection] review the exact tested version, manifest entry, lockfile
 changes, dependency chain, attempt history and verification checks
   │
   ├─ Missing review or escalation → Human review
   ▼
-Draft PR for the selected finding → Independent PR verification → Human review
+[AGENT: pr] draft explanatory text → GitHub creates draft PR
+  │
+  ▼
+Independent PR verification → Human review
   │
   └─ Merge changes manifests → Rescan on the next reconciliation
 ```
 
-The automatic queue works per finding. Multiple advisories can describe the same dependency. The cap applies when the reconciliation job builds its matrix. The separately dispatched manual remediation workflow selects a finding by ID.
+Each AGENT label marks an OpenAI role. Execution records distinguish live calls from cached, skipped or rejected assessments. The automatic queue retains related finding IDs for the same proposed update. A passing rescan determines which advisories the final version addresses. The cap applies when the reconciliation job builds its matrix. The separately dispatched manual remediation workflow selects a finding by ID.
 
 ## Checking the evidence
 
