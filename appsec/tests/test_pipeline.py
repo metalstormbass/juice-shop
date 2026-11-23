@@ -199,7 +199,7 @@ class PipelineTest(unittest.TestCase):
             args.db.unlink(missing_ok=True)
         out = io.StringIO()
         from appsec.remediation import remediate
-        with patch("appsec.cli.remediate", side_effect=lambda *args: remediate(*args, run=self.npm)):
+        with patch("appsec.cli.remediate", side_effect=lambda *args, **kwargs: remediate(*args, run=self.npm, **kwargs)):
             with contextlib.redirect_stdout(out):
                 self.assertEqual(execute(args, self.scanner, self.github, self.openai), 0)
         return json.loads(out.getvalue())

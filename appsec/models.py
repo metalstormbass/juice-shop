@@ -155,8 +155,15 @@ class AdvisoryComparison(Record):
     new_advisories: list[str]
 
 
+class AdvisoryTestPlan(Record):
+    fixture: Literal["ascii", "unicode"]
+    rationale: str
+    evidence_ids: list[str]
+
+
 class SecurityBehaviorResult(Record):
     advisory_id: str | None = None
+    fixture: str | None = None
     command: list[str]
     passed: bool
     evidence: str
