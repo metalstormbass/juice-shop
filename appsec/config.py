@@ -24,6 +24,7 @@ class Config(Record):
 
     # Maintainer-selected, existing tests of security behavior. Keys are npm package names.
     prepare_frontend: bool = False
+    require_advisory_test: bool = False
     advisory_behavior_tests: dict[str, list[list[str]]] = {}
 
     @field_validator("advisory_behavior_tests")

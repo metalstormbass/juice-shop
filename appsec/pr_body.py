@@ -6,12 +6,16 @@ from .github_report import advisory_links, text
 from .github import protected
 
 LABELS = (
-    ("npm install", "Lockfile regenerated for the new version"),
+
     ("npm ci", "Clean install from the new lockfile"),
     ("npm rebuild", "Native package rebuilt"),
+    ("npm exec --prefix frontend -- ng build", "Angular frontend build"),
+    ("npm run build:server", "Server build"),
+    ("npm install --prefix frontend", "Install frontend dependencies"),
     ("npm run test:server", "Server unit tests"),
     ("npm exec -- tsc --noEmit", "TypeScript compile check"),
     ("npm test", "Project tests"),
+    ("npm install", "Lockfile regenerated for the new version"),
 )
 
 
@@ -113,20 +117,13 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     if behavior:
         lines += ["**Maintained security behavior checks**", ""]
         for result in behavior:
-            lines += [f"- {'Pass' if result.passed else 'Fail'} — npm {text(' '.join(result.command))}"]
+            scope = text(result.advisory_id or "Application compatibility")
+            lines += [f"- **{scope}** — {'Pass' if result.passed else 'Fail'} · npm {text(' '.join(result.command))}"]
         lines.append("")
     else:
         lines += ["Focused security behavior tests were unavailable for this candidate.", ""]
-    if evidence := attempt.validation.advisory_comparison:
-        lines += ["**Before and after advisory evidence**", "", "| Evidence | Result |", "| --- | --- |",
-                  f"| Affected versions before | {', '.join(map(text, evidence.before_versions))} |",
-                  f"| Installed versions after | {', '.join(map(text, evidence.after_versions))} |",
-                  f"| Original advisories | {advisory_links(evidence.original_advisories)} |",
-                  f"| Original advisories still reported | {advisory_links(evidence.original_advisories_remaining) or 'None'} |",
-                  f"| Other advisories still reported for this package | {advisory_links(evidence.remaining_advisories) or 'None'} |",
-                  f"| New advisories reported by OSV | {advisory_links(evidence.new_advisories) or 'None'} |", ""]
     if verdict := extra.get("fix_validation"):
-        lines += [f"**Fix validation agent verdict · {text(verdict['verdict'])}**", "", text(verdict["rationale"]), "",
+        lines += ["**Fix validation agent**", "", text(verdict["rationale"]), "",
                   f"Limits: {text(verdict['remaining_uncertainty'])}", ""]
     if review:
         lines += ["**AI test review**", "", text(review.get("summary", "")), "",
@@ -143,6 +140,4 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     lines += ["<details><summary>Raw command output</summary>", ""]
     lines += [protected(check) + "\n" for check in attempt.validation.checks]
     lines += ["</details>"]
-    if run_url := extra.get("run_url"):
-        lines += ["", f"[Workflow run and downloadable audit evidence]({run_url})"]
     return "\n".join(lines)

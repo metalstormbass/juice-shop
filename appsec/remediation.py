@@ -142,6 +142,10 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
         checks.append(message)
         if not ok:
             break
+    if ok and config.require_advisory_test and not any(result.advisory_id for result in behavior):
+        return Validation(result="inconclusive",
+                          checks=[*checks, "No maintained runtime assertion covers the original advisory"],
+                          advisory_comparison=comparison, security_behavior=behavior)
     return Validation(result="pass" if ok else "fail", checks=checks,
                       advisory_comparison=comparison, security_behavior=behavior)
 
