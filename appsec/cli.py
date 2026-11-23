@@ -13,7 +13,7 @@ from .inventory import collect, compare
 from .models import Inventory, Repository
 from .osv import OSV
 from .reconcile import reconcile
-from .remediation import candidates, remediate
+from .remediation import PBKDF2_ADVISORY, PBKDF2_COMMAND, candidates, remediate
 from .store import SQLiteStore, digest as evidence_digest, encoded
 
 
@@ -221,11 +221,22 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     proposal = agents.run("test-development", finding, refs, assessment=assessment)
                     if proposal:
                         result["test_proposal"] = proposal.model_dump()
-                    attempts, files = remediate(root, repo, inventory, findings, finding, config, scanner)
+                    plan = None
+                    needs_plan = (finding.package == "crypto-js" and PBKDF2_ADVISORY in finding.advisory_ids
+                                  and PBKDF2_COMMAND in config.advisory_behavior_tests.get(PBKDF2_ADVISORY, []))
+                    if needs_plan:
+                        plan = agents.run("advisory-test-plan", finding, refs,
+                            assertion="Default PBKDF2 matches an independent SHA-256 reference",
+                            fixtures={"ascii": "Ordinary ASCII passphrase and salt",
+                                      "unicode": "Ordinary Unicode passphrase and salt"})
+                        result["advisory_test_plan"] = plan.model_dump() if plan else None
+                    if not needs_plan or plan:
+                        attempts, files = remediate(root, repo, inventory, findings, finding, config, scanner, plan=plan)
                     result["attempts"] = [item.model_dump() for item in attempts]
                     store.put("attempts", finding.finding_id, result["attempts"])
                     if not files:
-                        result["escalation"] = "No candidate passed independent verification"
+                        result["escalation"] = ("Advisory test plan unavailable" if needs_plan and plan is None
+                                                else "No candidate passed independent verification")
                 from .pr_body import describe
                 digest = []
                 recorded_checks = attempts[-1].validation.checks if attempts else []
@@ -249,6 +260,7 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     if comparison:
                         verification = agents.run("fix-validation", finding, refs,
                             version=attempts[-1].version, comparison=comparison.model_dump(),
+                            test_plan=result.get("advisory_test_plan"),
                             security_behavior=[result.model_dump() for result in attempts[-1].validation.security_behavior],
                             change_digest=evidence_digest(files), checks=digest)
                     result["fix_validation"] = verification.model_dump() if verification else None
@@ -279,19 +291,9 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     narrative = story.model_dump() if story else {"exposure": None, "residual_risks": "Human review required"}
                     result["draft"] = {"files": sorted(files), "validation": attempts[-1].model_dump(),
                                        "narrative": narrative}
-                    if not args.apply and (export_dir := os.environ.get("APPSEC_TESTED_FILES")):
-                        destination = Path(export_dir)
-                        destination.mkdir(parents=True, exist_ok=False)
-                        for name, content in files.items():
-                            (destination / name).write_text(content)
-                        result["draft"]["refs"] = [ref.model_dump() for ref in refs]
-                        result["draft"]["review_context"] = {
-                            "fix_validation": result["fix_validation"], "fix_inspection": result["fix_inspection"],
-                            "chains": chains(inventory, finding), "advice": result.get("remediation_advice"),
-                            "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
                     if github:
                         issue = github.call("GET", f"/issues/{issue_number}")
-                        extra = {"fix_validation": result["fix_validation"], "fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
+                        extra = {"advisory_test_plan": result.get("advisory_test_plan"), "fix_validation": result["fix_validation"], "fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
                                  "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
                         pull = github.draft(repo, issue, finding, files, attempts[-1], narrative,
                                             refs=refs, attempts=attempts, extra=extra)

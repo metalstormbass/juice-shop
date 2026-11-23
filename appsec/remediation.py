@@ -71,7 +71,11 @@ def approved_graph(inventory):
     return all(dep.registry.source == "public-npm" for dep in inventory.dependencies)
 
 
-def validate_fix(directory, repository, before, finding, scanner, run, config):
+PBKDF2_ADVISORY = "CVE-2023-46233"
+PBKDF2_COMMAND = ["exec", "--", "node", "appsec/checks/crypto-js-pbkdf2.cjs"]
+
+
+def validate_fix(directory, repository, before, finding, scanner, run, config, *, plan=None):
     inventory = collect(directory / repository.lockfile, repository)
     if not approved_graph(inventory):
         return Validation(result="fail", checks=["Updated graph contains an unsupported dependency source"])
@@ -137,8 +141,13 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
     for advisory in finding.advisory_ids:
         focused.extend((advisory, command) for command in config.advisory_behavior_tests.get(advisory, []))
     for advisory, command in focused if ok else []:
+        fixture = None
+        if advisory == PBKDF2_ADVISORY and command == PBKDF2_COMMAND:
+            fixture = plan.fixture if plan else "ascii"
+            command = [*command, fixture]
         ok, message = run(manifest_dir, command)
-        behavior.append(SecurityBehaviorResult(advisory_id=advisory, command=command, passed=ok, evidence=message))
+        behavior.append(SecurityBehaviorResult(advisory_id=advisory, fixture=fixture,
+                                               command=command, passed=ok, evidence=message))
         checks.append(message)
         if not ok:
             break
@@ -167,7 +176,7 @@ def revised_manifest(manifest, finding, target):
     return result
 
 
-def remediate(root, repository, inventory, findings, finding, config, scanner, run=run_npm):
+def remediate(root, repository, inventory, findings, finding, config, scanner, run=run_npm, *, plan=None):
     if not approved_graph(inventory) or not PACKAGE.fullmatch(finding.package):
         return [], {}
     archive = subprocess.check_output(["git", "archive", repository.revision], cwd=root, timeout=30)
@@ -210,7 +219,7 @@ def remediate(root, repository, inventory, findings, finding, config, scanner, r
             ok, message = run(scoped, ["install", "--package-lock=true", "--package-lock-only", "--ignore-scripts", "--no-audit",
                                        "--no-fund", "--registry=https://registry.npmjs.org"], network=True)
             if ok:
-                validation = validate_fix(directory, repository, findings, finding, scanner, run, config)
+                validation = validate_fix(directory, repository, findings, finding, scanner, run, config, plan=plan)
                 validation = validation.model_copy(update={"checks": [message, *validation.checks]})
             else:
                 validation = Validation(result="fail", checks=[message])

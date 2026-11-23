@@ -21,4 +21,4 @@ require_advisory_test = true
 moment = [["exec", "--", "node", "--import", "tsx", "--test", "test/server/jwtExpiry.unit.test.ts"]]
 
 [advisory_behavior_tests]
-CVE-2023-46233 = [["exec", "--", "node", "--test", "appsec/checks/crypto-js-pbkdf2.cjs"]]
+CVE-2023-46233 = [["exec", "--", "node", "appsec/checks/crypto-js-pbkdf2.cjs"]]

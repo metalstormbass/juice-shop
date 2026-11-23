@@ -1,6 +1,6 @@
 from .exposure import SECRET, references as evidence
 
-from .models import (AgentExecution, Assessment, FixValidationReview, Investigation,
+from .models import (AdvisoryTestPlan, AgentExecution, Assessment, FixValidationReview, Investigation,
                      Narrative, RemediationAdvice, TestProposal, TestReview)
 from .store import digest, encoded
 from .transport import RequestFailed, request
@@ -26,13 +26,16 @@ ROLES = {
              "Do not propose reproduction steps, payloads or probes."),
     "test-development": (TestProposal, "Describe a benign compatibility behavior that existing or "
                          "human-authored tests should protect. Do not generate code, inputs or reproduction steps."),
+    "advisory-test-plan": (AdvisoryTestPlan,
+        "Choose one supplied benign fixture for the registered PBKDF2 reference assertion. "
+        "Explain the coverage of the choice. Do not write code, commands, custom inputs or attack steps."),
     "fix-validation": (FixValidationReview,
                        "Review the installed version change and before/after OSV advisory evidence. "
                        "Decide whether the original advisory is resolved for this tested dependency graph. "
                        "Separate remaining advisories from the original advisory and state verification limits. "
                        "Review the recorded security behavior tests when supplied. Explain what their actual results establish "
                        "and where their coverage stops. A test is advisory-specific only when its advisory_id matches the finding. If no targeted behavior test ran, say that runtime security "
-                       "behavior remains unverified. Use inconclusive for missing advisory evidence. Compatibility tests do not demonstrate security "
+                       "behavior remains unverified. Use inconclusive for missing advisory evidence. Only claim runtime verification for the exact property exercised by a passing advisory-specific test. Compatibility tests do not demonstrate security "
                        "behavior. Do not propose exploitation, reproduction, probes or payloads."),
     "fix-inspection": (RemediationAdvice, "Inspect the exact tested dependency change, dependency chain, "
                        "changed lockfile paths, advisory facts and check results. Explain why this version addresses "
