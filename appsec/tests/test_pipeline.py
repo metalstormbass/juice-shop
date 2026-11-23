@@ -158,6 +158,13 @@ class PipelineTest(unittest.TestCase):
         responses["fix_validation"] = {"verdict": "resolved", "rationale": "Original advisory absent",
                                        "remaining_uncertainty": "OSV coverage", "evidence_ids": []}
         responses["fix_inspection"] = responses["remediation"]
+        payload = json.loads(data["input"])
+        ids = sorted(ref["id"] for ref in payload["evidence"])
+        cited_schema = data["text"]["format"]["schema"]["properties"]["evidence_ids"]
+        if ids:
+            assert cited_schema["items"]["enum"] == ids
+        else:
+            assert cited_schema["maxItems"] == 0
         if role == "triage":
             payload = json.loads(data["input"])
             call = next((r["id"] for r in payload["evidence"] if r["kind"] == "project call candidate"), None)
