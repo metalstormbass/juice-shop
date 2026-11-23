@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from appsec.cli import execute, revision
+from appsec.cli import execute, group_updates, revision
 from appsec.config import Config
 from appsec.github import GitHub, read_marker
 from appsec.inventory import collect, compare
@@ -155,6 +155,7 @@ class PipelineTest(unittest.TestCase):
             "pr": {"exposure": "Parser used by the fixture", "rationale": "Upgrade passed compatibility tests",
                    "residual_risks": "Human review of application exposure", "evidence_ids": ["E1"]},
         }
+        responses["fix_inspection"] = responses["remediation"]
         if role == "triage":
             payload = json.loads(data["input"])
             call = next((r["id"] for r in payload["evidence"] if r["kind"] == "project call candidate"), None)
@@ -362,6 +363,16 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(query_tokens, [None, "more"])
         self.assertEqual(len(finding.advisories), 2)
 
+    def test_queue_groups_advisories_and_preserves_one_slot_per_dependency(self):
+        def row(package, target, finding, open_pr=False):
+            return dict(package=package, target_version=target, finding_id=finding,
+                        eligible=not open_pr, in_progress=open_pr)
+        queue = [row("one", "1.2.1", "a"), row("one", "1.2.1", "b"), row("one", "1.3.0", "c"),
+                 row("two", "2.0.1", "d"), row("three", "3.1.0", "e"), row("two", "2.0.1", "f", True)]
+        updates = group_updates(queue)
+        self.assertEqual([update["package"] for update in updates], ["one", "three"])
+        self.assertEqual(updates[0]["related_findings"], ["a", "b"])
+
     def test_remediating_every_finding_reuses_triage_and_runs_project_tests(self):
         self.config.write_text('repository = "example/fixture"\nrun_npm_tests = true\n'
                                'rebuild_packages = ["sqlite3"]\n'
@@ -375,6 +386,19 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["remediations"][0]["pull"]["number"], 2)
         self.assertEqual(self.commands, [("install", True), ("ci", True), ("rebuild", True),
                                          ("run", False), ("exec", False)])
+
+    def test_missing_final_inspection_blocks_passing_upgrade(self):
+        self.command("reconcile")
+        provider = self.openai
+        def unavailable(method, url, data, headers, **kwargs):
+            if data["text"]["format"]["name"] == "fix_inspection":
+                raise RequestFailed(503)
+            return provider(method, url, data, headers, **kwargs)
+        self.openai = unavailable
+        result = self.command("remediate", fresh=True, every=True)["remediations"][0]
+        self.assertEqual(result["attempts"][-1]["validation"]["result"], "pass")
+        self.assertEqual(result["escalation"], "Fix inspection unavailable")
+        self.assertIsNone(self.remote.pull)
 
     def test_failing_project_test_blocks_the_draft_and_records_the_reason(self):
         self.config.write_text('repository = "example/fixture"\nrun_npm_tests = true\n'

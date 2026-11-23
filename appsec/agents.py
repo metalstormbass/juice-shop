@@ -26,6 +26,10 @@ ROLES = {
              "Do not propose reproduction steps, payloads or probes."),
     "test-development": (TestProposal, "Describe a benign compatibility behavior that existing or "
                          "human-authored tests should protect. Do not generate code, inputs or reproduction steps."),
+    "fix-inspection": (RemediationAdvice, "Inspect the exact tested dependency change, dependency chain, "
+                       "changed lockfile paths, advisory facts and check results. Explain why this version addresses "
+                       "the finding, remaining compatibility risks and test coverage gaps. Escalate if the evidence "
+                       "does not support this change. Cite supplied repository evidence when relevant."),
     "remediation": (RemediationAdvice, "Assess the compatibility of an upgrade from the authoritative fix list. "
                     "Escalate when uncertain. Do not generate code, commands or versions."),
     "test-review": (TestReview, "Explain in plain language what the supplied test and verification results show about "

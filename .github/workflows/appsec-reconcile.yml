@@ -73,7 +73,7 @@ jobs:
           slots=$(( MAX_OPEN_PULLS > open ? MAX_OPEN_PULLS - open : 0 ))
           echo "Open AppSec PRs: $open. Remediation slots: $slots." >> "$GITHUB_STEP_SUMMARY"
           echo "queue=$(jq -c --argjson n "$slots" \
-            '[.queue[] | select(.eligible) | {finding_id, package, installed_version}][:$n]' summary.json)" >> "$GITHUB_OUTPUT"
+            '.updates[:$n]' summary.json)" >> "$GITHUB_OUTPUT"
       - name: Write step inputs, outputs and evidence
         run: python -m appsec.review --mode apply
       - id: audit
