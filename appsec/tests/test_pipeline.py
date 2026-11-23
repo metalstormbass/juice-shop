@@ -468,6 +468,30 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["remediations"][0]["escalation"], "No candidate passed independent verification")
         self.assertIsNone(self.remote.pull)
 
+    def test_validated_fixture_reaches_only_the_registered_command(self):
+        from appsec.models import AdvisoryTestPlan
+        from appsec.remediation import PBKDF2_ADVISORY, PBKDF2_COMMAND, validate_fix
+
+        original, = self.scanner.scan(collect(self.root / "package-lock.json", self.repo))
+        finding = original.model_copy(update={"advisory_ids": [PBKDF2_ADVISORY]})
+        fixed = self.temp / "fixed"
+        fixed.mkdir()
+        shutil.copyfile(FIXTURES / "fixed-lock.json", fixed / "package-lock.json")
+        config = Config(run_npm_tests=True, require_advisory_test=True,
+                        advisory_behavior_tests={PBKDF2_ADVISORY: [PBKDF2_COMMAND]})
+        calls = []
+
+        def execute_command(directory, args, *, network=False):
+            calls.append((args, network))
+            return True, "test evidence"
+
+        plan = AdvisoryTestPlan(fixture="unicode", rationale="Cover encoding", evidence_ids=[])
+        result = validate_fix(fixed, self.repo, [finding], finding, self.scanner, execute_command, config, plan=plan)
+        self.assertEqual(result.result, "pass")
+        self.assertEqual(calls[-1], ([*PBKDF2_COMMAND, "unicode"], False))
+        self.assertEqual(result.security_behavior[0].fixture, "unicode")
+        self.assertEqual(config.advisory_behavior_tests[PBKDF2_ADVISORY], [PBKDF2_COMMAND])
+
     def test_remaining_known_advisories_pass_but_new_advisories_fail(self):
         from appsec.remediation import validate_fix
         original, = self.scanner.scan(collect(self.root / "package-lock.json", self.repo))
