@@ -93,6 +93,14 @@ class Agents:
             self.remaining -= 1
             attempts += 1
             output_schema = schema.model_json_schema()
+            allowed_ids = sorted({ref.id for ref in refs})
+            for definition in [output_schema, *output_schema.get("$defs", {}).values()]:
+                citations = definition.get("properties", {}).get("evidence_ids")
+                if citations is not None:
+                    if allowed_ids:
+                        citations["items"]["enum"] = allowed_ids
+                    else:
+                        citations["maxItems"] = 0
             if role == "triage" and not context.get("input_origin_ids"):
                 # Restrict the proposed verdict before inference so the prose and classification agree.
                 output_schema["properties"]["classification"]["enum"].remove("confirmed affected")
