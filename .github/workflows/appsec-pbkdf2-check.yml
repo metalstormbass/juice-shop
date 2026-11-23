@@ -1,0 +1,41 @@
+name: CryptoJS PBKDF2 advisory behavior check
+on:
+  push:
+    branches: [feature/appsec-refresh-reviewed]
+    paths: ['.github/workflows/appsec-pbkdf2-check.yml']
+permissions:
+  contents: read
+jobs:
+  runtime-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          path: checks
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 7adce56745e166b1396c70534121bec94ee8667a
+          persist-credentials: false
+          path: candidate
+      - name: Install the exact candidate lockfile
+        working-directory: candidate
+        run: npm ci --package-lock=true --ignore-scripts --no-audit --no-fund
+      - name: Compare observed PBKDF2 output with an independent implementation
+        working-directory: candidate
+        run: |
+          set -euo pipefail
+          mkdir -p appsec/checks
+          cp ../checks/appsec/checks/crypto-js-pbkdf2.cjs appsec/checks/
+          {
+            echo '## CVE-2023-46233 runtime check'
+            echo
+            echo "Tested PR commit $(git rev-parse HEAD). CryptoJS derived a key from a public test passphrase and salt using its default PBKDF2 settings. The check compares that output with Node crypto using SHA-256 and 250,000 iterations."
+            echo
+            echo '```text'
+            node --test appsec/checks/crypto-js-pbkdf2.cjs
+            echo '```'
+            echo
+            echo 'This check covers the installed library defaults. Application call paths and custom settings require separate evidence.'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
