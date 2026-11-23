@@ -155,7 +155,14 @@ class AdvisoryComparison(Record):
     new_advisories: list[str]
 
 
+class SecurityBehaviorResult(Record):
+    command: list[str]
+    passed: bool
+    evidence: str
+
+
 class Validation(Record):
+    security_behavior: list[SecurityBehaviorResult] = []
     advisory_comparison: AdvisoryComparison | None = None
     result: Literal["pass", "fail", "inconclusive"]
     checks: list[str]

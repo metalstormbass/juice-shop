@@ -389,6 +389,24 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(self.commands, [("install", True), ("ci", True), ("rebuild", True),
                                          ("run", False), ("exec", False)])
 
+    def test_failed_security_behavior_check_blocks_publication(self):
+        self.config.write_text(self.config.read_text() + '\n[security_behavior_tests]\nminimist = [["run", "check-contract"]]\n')
+        self.command("reconcile")
+        original = self.npm
+
+        def npm(directory, args, **kwargs):
+            if args == ["run", "check-contract"]:
+                self.assertFalse(kwargs.get("network", False))
+                return False, "Maintained security behavior assertion failed"
+            return original(directory, args, **kwargs)
+
+        self.npm = npm
+        result = self.command("remediate", fresh=True, every=True)["remediations"][0]
+        validation = result["attempts"][-1]["validation"]
+        self.assertEqual(validation["result"], "fail")
+        self.assertEqual(validation["security_behavior"][0]["passed"], False)
+        self.assertIsNone(self.remote.pull)
+
     def test_unresolved_fix_agent_blocks_passing_candidate(self):
         self.command("reconcile")
         provider = self.openai

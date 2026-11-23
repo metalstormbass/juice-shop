@@ -249,6 +249,7 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     if comparison:
                         verification = agents.run("fix-validation", finding, refs,
                             version=attempts[-1].version, comparison=comparison.model_dump(),
+                            security_behavior=[result.model_dump() for result in attempts[-1].validation.security_behavior],
                             change_digest=evidence_digest(files), checks=digest)
                     result["fix_validation"] = verification.model_dump() if verification else None
                     if verification is None or verification.verdict != "resolved":

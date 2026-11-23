@@ -34,12 +34,15 @@ Regenerate lockfile → Compare graph and OSV findings
   ▼
 Clean install → Rebuild sqlite3 → Server unit tests → TypeScript check
   │
+  ▼
+Run maintained security behavior tests when configured for the dependency
+  │
   ├─ Failed or inconclusive → Record outcome; escalate if no candidate passes
   ▼
 [AGENT: test-review] interpret recorded test evidence
   │
   ▼
-[AGENT: fix-validation] review before/after OSV evidence for the original advisory
+[AGENT: fix-validation] review before/after OSV and executed security behavior checks
   │
   ├─ Unresolved, inconclusive or unavailable → Human review
   ▼

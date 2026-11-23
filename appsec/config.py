@@ -22,6 +22,17 @@ class Config(Record):
     # npm argument lists run in order with the container network disabled.
     test_commands: list[list[str]] = [["test", "--ignore-scripts"]]
 
+    # Maintainer-selected, existing tests of security behavior. Keys are npm package names.
+    security_behavior_tests: dict[str, list[list[str]]] = {}
+
+    @field_validator("security_behavior_tests")
+    @classmethod
+    def behavior_commands(cls, value):
+        cls.package_names(list(value))
+        for commands in value.values():
+            cls.npm_commands(commands)
+        return value
+
     @field_validator("rebuild_packages")
     @classmethod
     def package_names(cls, value):
