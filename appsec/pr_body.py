@@ -124,4 +124,6 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     lines += ["<details><summary>Raw command output</summary>", ""]
     lines += [protected(check) + "\n" for check in attempt.validation.checks]
     lines += ["</details>"]
+    if run_url := extra.get("run_url"):
+        lines += ["", f"[Workflow run and evidence]({run_url})"]
     return "\n".join(lines)

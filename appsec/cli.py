@@ -271,10 +271,14 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     narrative = story.model_dump() if story else {"exposure": None, "residual_risks": "Human review required"}
                     result["draft"] = {"files": sorted(files), "validation": attempts[-1].model_dump(),
                                        "narrative": narrative}
+                    extra = {"fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding),
+                             "advice": advice.model_dump(), "proposal": result.get("test_proposal"),
+                             "test_review": result.get("test_review")}
+                    if not args.apply and (export_dir := os.environ.get("APPSEC_TESTED_FILES")):
+                        result["draft"]["review_context"] = extra
+                        result["draft"]["refs"] = [ref.model_dump() for ref in refs]
                     if github:
                         issue = github.call("GET", f"/issues/{issue_number}")
-                        extra = {"fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
-                                 "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
                         pull = github.draft(repo, issue, finding, files, attempts[-1], narrative,
                                             refs=refs, attempts=attempts, extra=extra)
                         store.put("pull", finding.finding_id, pull)
