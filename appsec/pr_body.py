@@ -6,12 +6,16 @@ from .github_report import advisory_links, text
 from .github import protected
 
 LABELS = (
-    ("npm install", "Lockfile regenerated for the new version"),
+
     ("npm ci", "Clean install from the new lockfile"),
     ("npm rebuild", "Native package rebuilt"),
+    ("npm exec --prefix frontend -- ng build", "Angular frontend build"),
+    ("npm run build:server", "Server build"),
+    ("npm install --prefix frontend", "Install frontend dependencies"),
     ("npm run test:server", "Server unit tests"),
     ("npm exec -- tsc --noEmit", "TypeScript compile check"),
     ("npm test", "Project tests"),
+    ("npm install", "Lockfile regenerated for the new version"),
 )
 
 
@@ -113,7 +117,8 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     if behavior:
         lines += ["**Maintained security behavior checks**", ""]
         for result in behavior:
-            lines += [f"- {'Pass' if result.passed else 'Fail'} — npm {text(' '.join(result.command))}"]
+            scope = text(result.advisory_id or "Application compatibility")
+            lines += [f"- **{scope}** — {'Pass' if result.passed else 'Fail'} · npm {text(' '.join(result.command))}"]
         lines.append("")
     else:
         lines += ["Focused security behavior tests were unavailable for this candidate.", ""]

@@ -9,9 +9,16 @@ output_cost_per_million = 1.6
 run_npm_tests = true
 # sqlite3 needs its native binary, which --ignore-scripts skips during npm ci.
 rebuild_packages = ["sqlite3"]
-# The server unit suite and a type check run offline after installation.
-test_commands = [["run", "test:server"], ["exec", "--", "tsc", "--noEmit"]]
+# Build both application components and run the server suite offline.
+prepare_frontend = true
+# The Angular development configuration builds offline without fetching web fonts.
+test_commands = [["exec", "--prefix", "frontend", "--", "ng", "build", "--configuration", "development"],
+                 ["run", "build:server"], ["run", "test:server"]]
+require_advisory_test = true
 
 [security_behavior_tests]
 # Verify signed-token expiry through the express-jwt dependency chain.
 moment = [["exec", "--", "node", "--import", "tsx", "--test", "test/server/jwtExpiry.unit.test.ts"]]
+
+[advisory_behavior_tests]
+CVE-2023-46233 = [["exec", "--", "node", "--test", "appsec/checks/crypto-js-pbkdf2.cjs"]]

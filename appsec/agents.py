@@ -31,8 +31,8 @@ ROLES = {
                        "Decide whether the original advisory is resolved for this tested dependency graph. "
                        "Separate remaining advisories from the original advisory and state verification limits. "
                        "Review the recorded security behavior tests when supplied. Explain what their actual results establish "
-                       "and where their coverage stops. If no targeted behavior test ran, say that runtime security "
-                       "behavior remains unverified. Use inconclusive for missing advisory evidence. Compatibility tests do not demonstrate security "
+                       "and where their coverage stops. A test is advisory-specific only when its advisory_id matches the finding. If no targeted behavior test ran, say that runtime security "
+                       "behavior remains unverified. Use inconclusive for missing advisory evidence. Only claim runtime verification for the exact property exercised by a passing advisory-specific test. Compatibility tests do not demonstrate security "
                        "behavior. Do not propose exploitation, reproduction, probes or payloads."),
     "fix-inspection": (RemediationAdvice, "Inspect the exact tested dependency change, dependency chain, "
                        "changed lockfile paths, advisory facts and check results. Explain why this version addresses "
