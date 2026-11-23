@@ -13,8 +13,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - package: crypto-js
-            target: '4.2.0'
+          - package: moment
+            target: '2.19.3'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:

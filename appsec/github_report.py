@@ -222,6 +222,13 @@ def remediation_summary(data, selected=None):
             else:
                 outcome = "Pass" if passed else "Fail"
             lines.append(f"| {text(label)} | {outcome} {text(detail)} |")
+        behavior = validation.get("security_behavior", [])
+        if behavior:
+            lines += ["", "**Maintained security behavior tests**", ""]
+            for result in behavior:
+                lines += [f"- {'Pass' if result['passed'] else 'Fail'} — npm {text(' '.join(result['command']))}"]
+        else:
+            lines += ["", "No focused security behavior test ran for this candidate."]
         lines += [""] + details("Command output and recorded checks",
                                 [f"<pre>{html.escape(check)}</pre>" for check in validation["checks"]])
     lines += ["## 4. Agent verification of the tested change", ""]

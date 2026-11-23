@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .inventory import EXACT, PACKAGE, collect, requirements
-from .models import AdvisoryComparison, Attempt, Validation
+from .models import AdvisoryComparison, Attempt, SecurityBehaviorResult, Validation
 
 def version_key(version):
     return tuple(map(int, version.split(".")))
@@ -27,8 +27,7 @@ def acceptable(installed, version):
 
 
 def candidates(finding):
-    return sorted({version for version in finding.fix_versions if (finding.package == "crypto-js" and version == "4.2.0")
-                  or acceptable(finding.installed_version, version)},
+    return sorted({version for version in finding.fix_versions if acceptable(finding.installed_version, version)},
                   key=version_key)
 
 
@@ -102,8 +101,7 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
                           advisory_comparison=comparison)
     if fresh:
         retry = sorted({version for item in fresh if item.package == finding.package
-                        for version in item.fix_versions if (finding.package == "crypto-js" and version == "4.2.0")
-                  or acceptable(finding.installed_version, version)},
+                        for version in item.fix_versions if acceptable(finding.installed_version, version)},
                        key=version_key)
         return Validation(result="fail", retry_versions=retry[-1:], advisory_comparison=comparison,
                           checks=["OSV reports new advisories in the updated graph: "
@@ -127,7 +125,15 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
         checks.append(message)
         if not ok:
             break
-    return Validation(result="pass" if ok else "fail", checks=checks, advisory_comparison=comparison)
+    behavior = []
+    for command in config.security_behavior_tests.get(finding.package, []) if ok else []:
+        ok, message = run(manifest_dir, command)
+        behavior.append(SecurityBehaviorResult(command=command, passed=ok, evidence=message))
+        checks.append(message)
+        if not ok:
+            break
+    return Validation(result="pass" if ok else "fail", checks=checks,
+                      advisory_comparison=comparison, security_behavior=behavior)
 
 
 def revised_manifest(manifest, finding, target):
