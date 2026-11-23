@@ -27,7 +27,9 @@ def acceptable(installed, version):
 
 
 def candidates(finding):
-    return sorted({version for version in finding.fix_versions if acceptable(finding.installed_version, version)},
+    return sorted({version for version in finding.fix_versions if (finding.package in {"crypto-js", "@cyclonedx/cyclonedx-npm"} and stable(version)
+                      and version_key(version) > version_key(finding.installed_version))
+                  or acceptable(finding.installed_version, version)},
                   key=version_key)
 
 
@@ -93,7 +95,9 @@ def validate_fix(directory, repository, before, finding, scanner, run, config):
     fresh = [item for item in after if not known.get(item.package, set()).intersection(item.advisory_ids)]
     if fresh:
         retry = sorted({version for item in fresh if item.package == finding.package
-                        for version in item.fix_versions if acceptable(finding.installed_version, version)},
+                        for version in item.fix_versions if (finding.package in {"crypto-js", "@cyclonedx/cyclonedx-npm"} and stable(version)
+                      and version_key(version) > version_key(finding.installed_version))
+                  or acceptable(finding.installed_version, version)},
                        key=version_key)
         return Validation(result="fail", retry_versions=retry[-1:],
                           checks=["OSV reports new advisories in the updated graph: "
