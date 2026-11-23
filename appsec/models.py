@@ -139,7 +139,31 @@ class ExposureValidation(Record):
     checks: list[str]
 
 
+class FixValidationReview(Record):
+    verdict: Literal["resolved", "unresolved", "inconclusive"]
+    rationale: str
+    remaining_uncertainty: str
+    evidence_ids: list[str]
+
+
+class AdvisoryComparison(Record):
+    original_advisories: list[str]
+    before_versions: list[str]
+    after_versions: list[str]
+    remaining_advisories: list[str]
+    original_advisories_remaining: list[str]
+    new_advisories: list[str]
+
+
+class SecurityBehaviorResult(Record):
+    command: list[str]
+    passed: bool
+    evidence: str
+
+
 class Validation(Record):
+    security_behavior: list[SecurityBehaviorResult] = []
+    advisory_comparison: AdvisoryComparison | None = None
     result: Literal["pass", "fail", "inconclusive"]
     checks: list[str]
     # Fix versions OSV lists for advisories that appear only after the upgrade.

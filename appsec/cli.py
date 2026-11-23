@@ -209,6 +209,8 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     raise ValueError("Run reconciliation before remediation so the finding has an issue")
                 advice = agents.run("remediation", finding, refs, assessment=assessment,
                                     candidates=candidates(finding))
+                result["triage"] = assessment
+                result["remediation_advice"] = advice.model_dump() if advice else None
                 files = {}
                 attempts = []
                 if candidates(finding) and advice is None:
@@ -242,6 +244,19 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     if review:
                         result["test_review"] = review.model_dump()
                 if files:
+                    comparison = attempts[-1].validation.advisory_comparison
+                    verification = None
+                    if comparison:
+                        verification = agents.run("fix-validation", finding, refs,
+                            version=attempts[-1].version, comparison=comparison.model_dump(),
+                            security_behavior=[result.model_dump() for result in attempts[-1].validation.security_behavior],
+                            change_digest=evidence_digest(files), checks=digest)
+                    result["fix_validation"] = verification.model_dump() if verification else None
+                    if verification is None or verification.verdict != "resolved":
+                        result["escalation"] = ("Fix validation agent unavailable" if verification is None
+                                                else "Fix validation agent did not confirm advisory resolution")
+                        files = {}
+                if files:
                     inspection = inspect_fix(agents, repo, inventory, finding, refs, files, attempts, digest, history)
                     if inspection:
                         result["fix_inspection"] = inspection.model_dump()
@@ -266,7 +281,7 @@ def execute(args, scanner=None, github=None, agent_send=None):
                                        "narrative": narrative}
                     if github:
                         issue = github.call("GET", f"/issues/{issue_number}")
-                        extra = {"fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
+                        extra = {"fix_validation": result["fix_validation"], "fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
                                  "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
                         pull = github.draft(repo, issue, finding, files, attempts[-1], narrative,
                                             refs=refs, attempts=attempts, extra=extra)

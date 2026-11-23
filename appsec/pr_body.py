@@ -109,6 +109,17 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
         lines.append(f"| {label} | {'✅' if passed else '❌'} {text(detail)} |")
     lines += ["", f"Verification outcome: **{text(attempt.validation.result)}**. "
               "The PR only changes `package.json` and `package-lock.json`.", ""]
+    behavior = attempt.validation.security_behavior
+    if behavior:
+        lines += ["**Maintained security behavior checks**", ""]
+        for result in behavior:
+            lines += [f"- {'Pass' if result.passed else 'Fail'} — npm {text(' '.join(result.command))}"]
+        lines.append("")
+    else:
+        lines += ["Focused security behavior tests were unavailable for this candidate.", ""]
+    if verdict := extra.get("fix_validation"):
+        lines += ["**Fix validation agent**", "", text(verdict["rationale"]), "",
+                  f"Limits: {text(verdict['remaining_uncertainty'])}", ""]
     if review:
         lines += ["**AI test review**", "", text(review.get("summary", "")), "",
                   f"- **Behavior exercised:** {text(review.get('behavior_covered', ''))}",

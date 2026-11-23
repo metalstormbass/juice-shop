@@ -155,7 +155,16 @@ class PipelineTest(unittest.TestCase):
             "pr": {"exposure": "Parser used by the fixture", "rationale": "Upgrade passed compatibility tests",
                    "residual_risks": "Human review of application exposure", "evidence_ids": ["E1"]},
         }
+        responses["fix_validation"] = {"verdict": "resolved", "rationale": "Original advisory absent",
+                                       "remaining_uncertainty": "OSV coverage", "evidence_ids": []}
         responses["fix_inspection"] = responses["remediation"]
+        payload = json.loads(data["input"])
+        ids = sorted(ref["id"] for ref in payload["evidence"])
+        cited_schema = data["text"]["format"]["schema"]["properties"]["evidence_ids"]
+        if ids:
+            assert cited_schema["items"]["enum"] == ids
+        else:
+            assert cited_schema["maxItems"] == 0
         if role == "triage":
             payload = json.loads(data["input"])
             call = next((r["id"] for r in payload["evidence"] if r["kind"] == "project call candidate"), None)
@@ -386,6 +395,45 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["remediations"][0]["pull"]["number"], 2)
         self.assertEqual(self.commands, [("install", True), ("ci", True), ("rebuild", True),
                                          ("run", False), ("exec", False)])
+
+    def test_failed_security_behavior_check_blocks_publication(self):
+        self.config.write_text(self.config.read_text() + '\n[security_behavior_tests]\nminimist = [["run", "check-contract"]]\n')
+        self.command("reconcile")
+        original = self.npm
+
+        def npm(directory, args, **kwargs):
+            if args == ["run", "check-contract"]:
+                self.assertFalse(kwargs.get("network", False))
+                return False, "Maintained security behavior assertion failed"
+            return original(directory, args, **kwargs)
+
+        self.npm = npm
+        result = self.command("remediate", fresh=True, every=True)["remediations"][0]
+        validation = result["attempts"][-1]["validation"]
+        self.assertEqual(validation["result"], "fail")
+        self.assertEqual(validation["security_behavior"][0]["passed"], False)
+        self.assertIsNone(self.remote.pull)
+
+    def test_unresolved_fix_agent_blocks_passing_candidate(self):
+        self.command("reconcile")
+        provider = self.openai
+
+        def unresolved(method, url, data, headers, **kwargs):
+            response = provider(method, url, data, headers, **kwargs)
+            if data["text"]["format"]["name"] == "fix_validation":
+                context = json.loads(data["input"])["context"]
+                self.assertEqual(context["comparison"]["after_versions"], ["1.2.6"])
+                self.assertEqual(context["comparison"]["original_advisories_remaining"], [])
+                block = response["output"][0]["content"][0]
+                verdict = json.loads(block["text"])
+                block["text"] = json.dumps({**verdict, "verdict": "inconclusive"})
+            return response
+
+        self.openai = unresolved
+        result = self.command("remediate", fresh=True, every=True)["remediations"][0]
+        self.assertEqual(result["attempts"][-1]["validation"]["result"], "pass")
+        self.assertEqual(result["fix_validation"]["verdict"], "inconclusive")
+        self.assertIsNone(self.remote.pull)
 
     def test_missing_final_inspection_blocks_passing_upgrade(self):
         self.command("reconcile")

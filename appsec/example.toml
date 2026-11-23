@@ -11,3 +11,7 @@ run_npm_tests = true
 rebuild_packages = ["sqlite3"]
 # The server unit suite and a type check run offline after installation.
 test_commands = [["run", "test:server"], ["exec", "--", "tsc", "--noEmit"]]
+
+[security_behavior_tests]
+# Verify signed-token expiry through the express-jwt dependency chain.
+moment = [["exec", "--", "node", "--import", "tsx", "--test", "test/server/jwtExpiry.unit.test.ts"]]
