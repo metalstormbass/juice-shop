@@ -209,6 +209,8 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     raise ValueError("Run reconciliation before remediation so the finding has an issue")
                 advice = agents.run("remediation", finding, refs, assessment=assessment,
                                     candidates=candidates(finding))
+                result["triage"] = assessment
+                result["remediation_advice"] = advice.model_dump() if advice else None
                 files = {}
                 attempts = []
                 if candidates(finding) and advice is None:
@@ -242,6 +244,18 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     if review:
                         result["test_review"] = review.model_dump()
                 if files:
+                    comparison = attempts[-1].validation.advisory_comparison
+                    verification = None
+                    if comparison:
+                        verification = agents.run("fix-validation", finding, refs,
+                            version=attempts[-1].version, comparison=comparison.model_dump(),
+                            change_digest=evidence_digest(files), checks=digest)
+                    result["fix_validation"] = verification.model_dump() if verification else None
+                    if verification is None or verification.verdict != "resolved":
+                        result["escalation"] = ("Fix validation agent unavailable" if verification is None
+                                                else "Fix validation agent did not confirm advisory resolution")
+                        files = {}
+                if files:
                     inspection = inspect_fix(agents, repo, inventory, finding, refs, files, attempts, digest, history)
                     if inspection:
                         result["fix_inspection"] = inspection.model_dump()
@@ -259,26 +273,15 @@ def execute(args, scanner=None, github=None, agent_send=None):
                     github.sync(issue, issue_payload(finding, state))
                     store.put("state:" + scope, finding.finding_id, state)
                 if files:
-                    if not args.apply and (export_dir := os.environ.get("APPSEC_TESTED_FILES")):
-                        destination = Path(export_dir)
-                        destination.mkdir(parents=True, exist_ok=False)
-                        for name, content in files.items():
-                            target = destination / name
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            target.write_text(content)
                     story = agents.run("pr", finding, refs, assessment=assessment, advice=advice.model_dump() if advice else None,
                                        version=attempts[-1].version, attempts=history, checks=digest)
                     narrative = story.model_dump() if story else {"exposure": None, "residual_risks": "Human review required"}
                     result["draft"] = {"files": sorted(files), "validation": attempts[-1].model_dump(),
                                        "narrative": narrative}
-                    extra = {"fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding),
-                             "advice": advice.model_dump(), "proposal": result.get("test_proposal"),
-                             "test_review": result.get("test_review")}
-                    if not args.apply and (export_dir := os.environ.get("APPSEC_TESTED_FILES")):
-                        result["draft"]["review_context"] = extra
-                        result["draft"]["refs"] = [ref.model_dump() for ref in refs]
                     if github:
                         issue = github.call("GET", f"/issues/{issue_number}")
+                        extra = {"fix_validation": result["fix_validation"], "fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
+                                 "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
                         pull = github.draft(repo, issue, finding, files, attempts[-1], narrative,
                                             refs=refs, attempts=attempts, extra=extra)
                         store.put("pull", finding.finding_id, pull)

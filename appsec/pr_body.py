@@ -109,6 +109,9 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
         lines.append(f"| {label} | {'✅' if passed else '❌'} {text(detail)} |")
     lines += ["", f"Verification outcome: **{text(attempt.validation.result)}**. "
               "The PR only changes `package.json` and `package-lock.json`.", ""]
+    if verdict := extra.get("fix_validation"):
+        lines += ["**Fix validation agent**", "", text(verdict["rationale"]), "",
+                  f"Limits: {text(verdict['remaining_uncertainty'])}", ""]
     if review:
         lines += ["**AI test review**", "", text(review.get("summary", "")), "",
                   f"- **Behavior exercised:** {text(review.get('behavior_covered', ''))}",
@@ -124,6 +127,4 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     lines += ["<details><summary>Raw command output</summary>", ""]
     lines += [protected(check) + "\n" for check in attempt.validation.checks]
     lines += ["</details>"]
-    if run_url := extra.get("run_url"):
-        lines += ["", f"[Workflow run and evidence]({run_url})"]
     return "\n".join(lines)
