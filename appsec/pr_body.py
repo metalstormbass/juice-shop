@@ -113,6 +113,9 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
         lines.append(f"| {label} | {'✅' if passed else '❌'} {text(detail)} |")
     lines += ["", f"Verification outcome: **{text(attempt.validation.result)}**. "
               "The PR only changes `package.json` and `package-lock.json`.", ""]
+    if plan := extra.get("advisory_test_plan"):
+        lines += [f"**Agent-selected runtime fixture · {text(plan['fixture'])}**", "",
+                  text(plan["rationale"]), ""]
     behavior = attempt.validation.security_behavior
     if behavior:
         lines += ["**Maintained security behavior checks**", ""]

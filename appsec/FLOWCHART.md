@@ -25,7 +25,13 @@ Group by package and proposed version → Queue one update per package
 [AGENT: remediation] review compatibility
   │
   ▼
-[AGENT: test-development] propose compatibility checks → npm updates dependency
+[AGENT: test-development] propose compatibility checks
+  │
+  ▼
+[AGENT: advisory-test-plan] choose an approved fixture when supported
+  │
+  ▼
+npm updates dependency
   │
   ▼
 Regenerate lockfile → Compare graph and OSV findings

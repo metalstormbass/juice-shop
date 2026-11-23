@@ -200,6 +200,8 @@ def remediation_summary(data, selected=None):
                   f"Expected result: {text(proposal['expected_result'])}."]
     else:
         lines += ["- **Test development agent** — No proposal recorded."]
+    if plan := data.get("advisory_test_plan"):
+        lines += [f"- **Advisory test plan agent · {text(plan['fixture'])} fixture** — {text(plan['rationale'])}"]
     lines += ["", "## 3. Upgrade, advisory rescan and compatibility checks", ""]
     if not attempts:
         lines += ["No candidate reached verification.", ""]
