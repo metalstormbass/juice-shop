@@ -155,6 +155,7 @@ class PipelineTest(unittest.TestCase):
             "pr": {"exposure": "Parser used by the fixture", "rationale": "Upgrade passed compatibility tests",
                    "residual_risks": "Human review of application exposure", "evidence_ids": ["E1"]},
         }
+        responses["fix_inspection"] = responses["remediation"]
         if role == "triage":
             payload = json.loads(data["input"])
             call = next((r["id"] for r in payload["evidence"] if r["kind"] == "project call candidate"), None)
@@ -375,6 +376,19 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["remediations"][0]["pull"]["number"], 2)
         self.assertEqual(self.commands, [("install", True), ("ci", True), ("rebuild", True),
                                          ("run", False), ("exec", False)])
+
+    def test_missing_final_inspection_blocks_passing_upgrade(self):
+        self.command("reconcile")
+        provider = self.openai
+        def unavailable(method, url, data, headers, **kwargs):
+            if data["text"]["format"]["name"] == "fix_inspection":
+                raise RequestFailed(503)
+            return provider(method, url, data, headers, **kwargs)
+        self.openai = unavailable
+        result = self.command("remediate", fresh=True, every=True)["remediations"][0]
+        self.assertEqual(result["attempts"][-1]["validation"]["result"], "pass")
+        self.assertEqual(result["escalation"], "Fix inspection unavailable")
+        self.assertIsNone(self.remote.pull)
 
     def test_failing_project_test_blocks_the_draft_and_records_the_reason(self):
         self.config.write_text('repository = "example/fixture"\nrun_npm_tests = true\n'

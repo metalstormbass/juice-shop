@@ -86,6 +86,13 @@ def render(repository, issue, finding, attempt, attempts, narrative, refs, extra
     lines += usage_lines(repository, finding, refs, extra.get("chains") or [])
     lines += ["## 3. Why this fix", "",
               text(narrative.get("rationale") or f"{attempt.version} is a same-major release OSV lists as fixed."), ""]
+    if inspection := extra.get("fix_inspection"):
+        lines += [f"**Agent inspection of tested version {text(attempt.version)}**", "",
+                  text(inspection["reasoning"]), "",
+                  "Compatibility risks: " + text(inspection["compatibility_risks"]), ""]
+        links = source_links(repository, refs, inspection["evidence_ids"])
+        if links:
+            lines += ["Inspection evidence: " + " · ".join(links), ""]
     if advice.get("compatibility_risks") and len(attempts) == 1:
         lines += [f"Compatibility risk noted: {text(advice['compatibility_risks'])}", ""]
     if len(attempts) > 1:

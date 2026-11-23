@@ -14,7 +14,23 @@ from .models import Inventory, Repository
 from .osv import OSV
 from .reconcile import reconcile
 from .remediation import candidates, remediate
-from .store import SQLiteStore, encoded
+from .store import SQLiteStore, digest as evidence_digest, encoded
+
+
+def inspect_fix(agents, repo, inventory, finding, refs, files, attempts, checks, history):
+    manifest_path = str(Path(repo.lockfile).with_name("package.json"))
+    manifest = json.loads(files[manifest_path])
+    lock_entries = json.loads(files[repo.lockfile])["packages"]
+    old = {dep.path: dep.version for dep in inventory.dependencies}
+    new = {path: entry.get("version") for path, entry in lock_entries.items() if path}
+    changes = [{"path": path, "before": old.get(path), "after": new.get(path)}
+               for path in sorted(old.keys() | new.keys()) if old.get(path) != new.get(path)]
+    return agents.run("fix-inspection", finding, refs,
+        version=attempts[-1].version, dependency_chain=chains(inventory, finding),
+        manifest_entries={group: manifest[group][finding.package] for group in
+            ("dependencies", "devDependencies", "optionalDependencies", "overrides")
+            if finding.package in manifest.get(group, {})},
+        lock_changes=changes, change_digest=evidence_digest(files), checks=checks, attempts=history)
 
 
 def revision(root, ref):
@@ -176,7 +192,9 @@ def execute(args, scanner=None, github=None, agent_send=None):
                                     candidates=candidates(finding))
                 files = {}
                 attempts = []
-                if not candidates(finding) or (advice and advice.recommendation != "upgrade"):
+                if candidates(finding) and advice is None:
+                    result["escalation"] = "Remediation agent inspection unavailable"
+                elif not candidates(finding) or advice.recommendation != "upgrade":
                     result["escalation"] = "No approved compatible upgrade candidate"
                 else:
                     proposal = agents.run("test-development", finding, refs, assessment=assessment)
@@ -189,8 +207,11 @@ def execute(args, scanner=None, github=None, agent_send=None):
                         result["escalation"] = "No candidate passed independent verification"
                 from .pr_body import describe
                 digest = []
-                for check in (attempts[-1].validation.checks if attempts else []):
+                recorded_checks = attempts[-1].validation.checks if attempts else []
+                for index, check in enumerate(recorded_checks):
                     label, passed, detail = describe(check)
+                    if index == len(recorded_checks) - 1 and attempts[-1].validation.result != "pass":
+                        passed = False
                     digest.append({"check": label, "passed": passed, "counts": detail,
                                    **({} if passed else {"failure_tail": check[-700:]})})
                 history = [{"version": item.version, "result": item.validation.result} for item in attempts]
@@ -201,12 +222,21 @@ def execute(args, scanner=None, github=None, agent_send=None):
                                         checks=digest)
                     if review:
                         result["test_review"] = review.model_dump()
+                if files:
+                    inspection = inspect_fix(agents, repo, inventory, finding, refs, files, attempts, digest, history)
+                    if inspection:
+                        result["fix_inspection"] = inspection.model_dump()
+                        store.put("fix-inspection", finding.finding_id, result["fix_inspection"])
+                    if inspection is None or inspection.recommendation != "upgrade":
+                        result["escalation"] = ("Fix inspection unavailable" if inspection is None
+                                                else "Fix inspector requested human review")
+                        files = {}
                 if not files and github:
                     issue = github.call("GET", f"/issues/{issue_number}")
                     state = {**state, "status": "needs-human-review", "reason": result["escalation"],
-                             "attempted_revision": sha,
+                             "attempted_revision": None if "unavailable" in result["escalation"] else sha,
                              "display": {**state["display"], "remediation_attempts": result.get("attempts", []),
-                                         "test_review": result.get("test_review")}}
+                                         "test_review": result.get("test_review"), "fix_inspection": result.get("fix_inspection")}}
                     github.sync(issue, issue_payload(finding, state))
                     store.put("state:" + scope, finding.finding_id, state)
                 if files:
@@ -217,7 +247,7 @@ def execute(args, scanner=None, github=None, agent_send=None):
                                        "narrative": narrative}
                     if github:
                         issue = github.call("GET", f"/issues/{issue_number}")
-                        extra = {"chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
+                        extra = {"fix_inspection": result["fix_inspection"], "chains": chains(inventory, finding), "advice": advice.model_dump() if advice else None,
                                  "proposal": result.get("test_proposal"), "test_review": result.get("test_review")}
                         pull = github.draft(repo, issue, finding, files, attempts[-1], narrative,
                                             refs=refs, attempts=attempts, extra=extra)
